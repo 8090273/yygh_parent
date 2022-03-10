@@ -122,4 +122,62 @@ Random random = new Random();
 根据id查到实体类  
 得到实体类中的医院编号和签名密钥   
 后期再写发送短信的业务
+
 ### 发送短信
+
+待定
+
+# 全局异常处理
+
+要把所有异常做一个统一的处理，而不是返回“500”  
+
+因为异常处理全局都能用到，所以提取到common模块中
+
+## 创建异常类
+
+在common模块的common_util中创建`exception.GlobalExceptionHandler`类，并标注注解`@ControllerAdvice`
+
+### @ControllerAdvice
+
+本质上是一个Component，因此也会被当成组件扫描   
+
+此注解其实是一个增强的Controller，使用这个Controller，可实现三个方面的功能，因为是SpringMVC提供的功能，所以可用在SpringBoot中
+
+- 全局异常处理(`@ExceptionHandler`)：用来指明
+- 全局数据绑定(`@InitBinder`)
+- 全局数据预处理（`@ModelAttribute`）
+
+`@ExceptionHandler({Exception.class})`将所有异常都接收
+
+## 定义自定义异常类
+
+直接粘贴代码  
+
+`yyghExceptionn`继承了RuntimeException，其中有一个属性：状态码   
+
+有两个构造方法，可用传入（信息、状态码）或（异常枚举类）
+
+# 日志
+
+## 设置日志级别
+
+在`application.properties`文件中添加
+
+```properties
+logging.level.root=debug
+```
+
+此级别可看到更多的信息
+
+## Logback日志
+
+springBoot内部使用Logback作为日志实现的框架
+
+### 配置日志
+
+在resources下新建logback-spring.xml  
+
+编写相关代码（复制粘贴）
+
+
+
