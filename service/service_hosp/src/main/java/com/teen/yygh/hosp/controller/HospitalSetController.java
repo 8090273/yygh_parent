@@ -27,6 +27,7 @@ import java.util.Random;
 @Api(tags = "医院设置管理")
 @RestController
 @RequestMapping("admin/hosp/hospitalSet")
+@CrossOrigin //跨域资源共享开启，允许跨域访问
 public class HospitalSetController {
     @Autowired
     private HospitalSetService hospitalSetService;
@@ -77,7 +78,7 @@ public class HospitalSetController {
     @PostMapping("findHospitalSet/{current}/{limit}")
     public Result findHospSet(@PathVariable Long current,
                               @PathVariable Long limit,
-                              @RequestBody HospitalQueryVo hospitalQueryVo){
+                              @RequestBody(required = false) HospitalQueryVo hospitalQueryVo){
         //构造分页对象
         Page<HospitalSet> page= new Page<>(current,limit);
         //构造条件
@@ -126,6 +127,7 @@ public class HospitalSetController {
      * @param id 医院id
      * @return 医院对象
      */
+    @ApiOperation("根据id获取医院")
     @GetMapping("getHospitalSet/{id}")
     public Result getHospitalSet(@PathVariable Long id){
         HospitalSet hospitalSet = hospitalSetService.getById(id);
@@ -153,7 +155,7 @@ public class HospitalSetController {
      * @param idList 元素为id的List集合
      * @return 返回ok
      */
-    @ApiOperation("批量删除医院，传入id")
+    @ApiOperation("批量删除医院，传入id列表")
     @DeleteMapping("batchRemove")
     public Result batchRemoveHospitalSet(@RequestBody List<Long> idList){
         hospitalSetService.removeByIds(idList);

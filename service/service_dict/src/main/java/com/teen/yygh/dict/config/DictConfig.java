@@ -1,4 +1,4 @@
-package com.teen.yygh.hosp.config;
+package com.teen.yygh.dict.config;
 
 import com.baomidou.mybatisplus.extension.plugins.PaginationInterceptor;
 import org.mybatis.spring.annotation.MapperScan;
@@ -11,8 +11,8 @@ import org.springframework.context.annotation.Configuration;
  */
 
 @Configuration
-@MapperScan("com.teen.yygh.hosp.mapper")
-public class HospConfig {
+@MapperScan("com.teen.yygh.dict.mapper")
+public class DictConfig {
     @Bean
     public PaginationInterceptor paginationInterceptor(){
         return new PaginationInterceptor();

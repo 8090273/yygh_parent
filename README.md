@@ -179,5 +179,75 @@ springBoot内部使用Logback作为日志实现的框架
 
 编写相关代码（复制粘贴）
 
+# 配置分页插件
+
+## 添加Bean
+
+在service模块的service_hosp模块下，config.HospConfig类中添加  
+
+```java
+@Bean
+    public PaginationInterceptor paginationInterceptor(){
+        return new PaginationInterceptor();
+    }
+```
+
+# 数据字典模块
+
+因为有很多数据不会被更改（如省、市区），所以可以抽取出一个数据字典。数据字典
+
+## 新建模块
+
+新建Service下的service_dict文件  
+
+照常创建config、service、mapper、controller并复制粘贴service_hosp模块即可
+
+## 查询id下的子数据
+
+id = parent_id  
+
+通过parent_id可以获得层级关系，进而获得层级列表。  
+
+```java
+QueryWrapper wrapper = new QueryWrapper();
+wrapper.eq("parent_id",id);
+List<Dict> list = baseMapper.selectList(wrapper);
+```
+
+同时还要判断子节点下是否有子节点，因为hasChildren属性并不在数据库表中。
+
+# EasyExcel表格框架
+
+通过Excel表格加载到数据库中
+
+## 引入依赖
+
+```xml
+<dependencies>
+    <!-- https://mvnrepository.com/artifact/com.alibaba/easyexcel -->
+    <dependency>
+        <groupId>com.alibaba</groupId>
+        <artifactId>easyexcel</artifactId>
+        <version>2.1.1</version>
+    </dependency>
+</dependencies>
+```
+
+## 读写数据字典
 
 
+
+<div class="app-container">
+        <el-table
+        :data="list"
+        style="width: 100%"
+        row-key="id"
+        border
+        lazy
+        :load="getChildrens"
+        :tree-props="{children: 'children', hasChildren: 'hasChildren'}">
+            <el-table-column label="名称" width="230" align="left">
+            <template slot-scope="scope">
+            <span>{{ scope.row.name }}</span>
+            </template>
+            </el-table-column>
