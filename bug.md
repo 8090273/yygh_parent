@@ -142,7 +142,170 @@ el-table中的`@selection-change="handleSelectionChange"`没有加`@`
 
 ## 总结
 
+# Redis连接不上
 
+## 描述
+
+后端连接redis时报错，说redis在安全模式下拒绝访问
+
+## 原因
+
+redis开启了安全模式，并且没有设置密码
+
+## 解决
+
+设置密码即可
+
+```
+config set requirepass root
+```
+
+设置完成后登录
+
+```
+auth root
+```
+
+然后在配置文件中添加
+
+```pr
+spring.redis.password=root
+```
+
+## 总结
+
+轻松解决
+
+# 配置nginx后发现请求后端接口超时
+
+## 描述
+
+前端报错请求超时，进入nginx的error日志中看到请求windows主机端口超时，我猜可能是防火墙没关，先看看端口通不通-----不通
+
+## 原因
+
+tnnd！！！！  
+
+原来是我后端没启动！！！  
+
+我服了！！！
+
+## 解决
+
+启动后端微服务即可。。。
+
+1. 测试端口
+
+   需要使用telnet，先在linux中安装
+
+   `yum install telnet-server`
+
+   `yum install telnet`
+
+2. 测试不通，开启windows端口
+
+## 总结
+
+粗心大意白忙活半小时
+
+# 医院模拟接口无数据显示
+
+## 描述
+
+进入医院模拟平台，发现没有任何数据
+
+## 原因
+
+数据库中没有id为1的医院
+
+## 解决
+
+在数据库中添加一条记录即可
+
+## 总结
+
+弹幕666
+
+# 医院模拟接口redis连接失败，无法创建RedisTemplate
+
+## 描述
+
+连接redis时，创建redisTemplate失败，报错：`java.lang.NoClassDefFoundError: org/apache/commons/pool2/impl/GenericObjectPoolConfig`
+
+## 原因
+
+没有添加相关依赖
+
+## 解决
+
+添加依赖  
+
+```xml
+<dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-pool2</artifactId>
+        </dependency>
+```
+
+
+
+## 总结
+
+有时候未找到类的原因是没有添加依赖  
+
+要注意最后一行的报错
+
+# 医院的MD5加密与平台的MD5加密不同
+
+## 描述
+
+医院方的明文与平台方发明文相同，使用同样的MD5加密（字符编码也统一过了），但是密文却不相同  
+
+还有很重要的一点：每次md5加密结果都不一样
+
+---
+
+花费7个小时依然未解决，最后五分钟找到原因  
+
+## 原因
+
+两边的map内容应该不同，但是明文相同  
+
+---
+
+明文不同！因为将图片转为了base64编码，在网络传输过程中，java自动将`+` 解析为了 `" "`！！！导致两边明文不同
+
+## 解决
+
+待解决。。。  
+
+先改为只对sign加密了
+
+---
+
+已解决！  
+
+需要将传过来的对象中的`logoData`中的符号转换一下  
+
+```java
+//血妈坑壁！！！！艹！
+        //传输过程中“+”转换为了“ ”，因此我们要转换回来
+        String logoDataString = (String)paramMap.get("logoData");
+        if(!StringUtils.isEmpty(logoDataString)) {
+            String logoData = logoDataString.replaceAll(" ", "+");
+            paramMap.put("logoData", logoData);
+        }
+```
+
+
+
+## 总结
+
+累死累活一下午，啥也没de出来
+
+---
+
+忙活7个小时，不如摆烂五分钟。真正意义上的漏洞
 
 
 

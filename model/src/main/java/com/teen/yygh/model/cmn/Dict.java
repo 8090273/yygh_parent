@@ -14,8 +14,8 @@ import java.util.Map;
  * <p>
  * Dict
  * </p>
- *
- * @author qy
+ * 注意这个类不继承基类，因为会无法设置id值，导致id自增
+ * @author teen
  */
 @Data
 @ApiModel(description = "数据字典")

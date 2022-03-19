@@ -235,19 +235,623 @@ List<Dict> list = baseMapper.selectList(wrapper);
 
 ## 读写数据字典
 
+使用`EasyExcel.write().sheet().doWrite()`来进行写表格操作  
+
+## 导出数据库中的数据字典到excel表格中
+
+因为要向响应中添加数据，所以controller中接收`HttpServletResponse`参数。  
+
+设置下载信息
+
+```java
+//设置下载信息
+response.setContentType("application/vnd.ms-excel");
+response.setCharacterEncoding("utf-8");
+String fileName = URLEncoder.encode("数据字典","utf-8");
+```
+
+设置响应头，以下载的方式打开
+
+```java
+//以下载方式打开
+response.setHeader("Content-disposition",
+                   "attachment;filename="+fileName+".xlsx");
+```
+
+对数据库中查询出的dict对象进行封装，封装为Vo对象`DictEeVos`  
+
+可以使用工具类进行深拷贝
+
+```java
+//使用工具类进行深拷贝
+BeanUtils.copyProperties(dict,dictEeVo);
+```
+
+最后进行表格的写操作
+
+```java
+//进行表格写操作
+EasyExcel.write(response.getOutputStream(),DictEeVo.class)
+    .sheet("数据字典")
+    .doWrite(dictEeVos);
+```
+
+注意：**controller层使用void返回，不然会报错**
+
+## 将表格数据导入数据字典
+
+### controller层
+
+传参`MultipartFile file`以便接收前端传来的文件  
+
+### 配置监听器
+
+想要将表格写入数据库中，需要配置一个配置类来监听表格  
+
+新建`listener.DictListener`类，继承`AnalysisEventListener<DictEeVo>`，实现抽象方法
+
+```java
+//一行一行的读取，从第二行开始
+    @Override
+    public void invoke(DictEeVo dictEeVo, AnalysisContext analysisContext) {
+        Dict dict = new Dict();
+        BeanUtils.copyProperties(dictEeVo,dict);
+        dictMapper.insert(dict);
+
+    }
+```
+
+因为要进行增删改查，所以要使用到DictMapper，这里使用有参构造注入依赖
+
+```java
+//因为要进行增删改查，所以需要依赖注入mapper
+private DictMapper dictMapper;
+//使用有参构造注入依赖
+public DictListener(DictMapper dictMapper) {
+    this.dictMapper = dictMapper;
+}
+```
+
+### service层
+
+直接调用`EasyExcel.read(file.getInputStream(),DictEeVo.class,new DictListener(dictMapper)).sheet().doRead();`方法即可，传参 *输入流*、*实体类*、*监听器*  
+
+### 实体类注意事项
+
+其他实体类都继承有`BaseEntity`，这样会导致主键自增，我们想自定义主键，必须解除继承，自行编译。
+
+# 缓存！！！
+
+缓存是为了提供查询速度  
+
+适合做缓存的数据：不经常修改的数据，固定的数据，经常做查询的数据
+
+## Spring Cache+Redis缓存数据
+
+`@Transactional`注解事务的注解Cache支持，且提供了Cache抽象，方便切换各种底层Cache（如**redis**）
+
+### 使用Spring Cache的好处
+
+1. 提供基本的Cache抽象。方便切换各种底层Cache
+2. 通过注解Cache可以实现类似于事务的操作，缓存逻辑透明的应用到我们的业务代码上，且需要更少的代码就可以完成
+3. 提供事务的回滚和字典回滚缓存
+4. 支持比较复杂的缓存逻辑
+
+## 项目集成SpringCache
+
+因为很多模块都用到缓存，所以将模块提取到common模块中
+
+### 添加依赖
+
+在service_util模块中添加
+
+### 添加配置类
+
+添加`config.RedisConfig`类，标注`@Configuration`,` @EnableCaching`,`@EnableCaching`表示开启缓存  
+
+编写固定配置：
+
+```java
+@Configuration
+@EnableCaching
+public class RedisConfig {
+    /**
+     * 自定义key规则
+     * 可以帮助生成唯一的key
+     * @return
+     */
+    @Bean
+    public KeyGenerator keyGenerator() {
+        return new KeyGenerator() {
+            @Override
+            public Object generate(Object target, Method method, Object... params) {
+                StringBuilder sb = new StringBuilder();
+                //类名
+                sb.append(target.getClass().getName());
+                //方法名
+                sb.append(method.getName());
+                for (Object obj : params) {
+                    //各个对象
+                    sb.append(obj.toString());
+                }
+                //类名+方法名+对象
+                return sb.toString();
+            }
+        };
+    }
+
+    /**
+     * 设置RedisTemplate规则
+     * 从Redis中存取内容需要用到RedisTemplate
+     * @param redisConnectionFactory
+     * @return
+     */
+    @Bean
+    public RedisTemplate<Object, Object> redisTemplate(RedisConnectionFactory redisConnectionFactory) {
+        //新建RedisTemplate
+        RedisTemplate<Object, Object> redisTemplate = new RedisTemplate<>();
+        //设置连接工厂
+        redisTemplate.setConnectionFactory(redisConnectionFactory);
+        //设置Jackson的Redis序列化
+        Jackson2JsonRedisSerializer jackson2JsonRedisSerializer = new Jackson2JsonRedisSerializer(Object.class);
+
+        //解决查询缓存转换异常的问题
+        ObjectMapper om = new ObjectMapper();
+        // 指定要序列化的域，field,get和set,以及修饰符范围，ANY是都有包括private和public
+        om.setVisibility(PropertyAccessor.ALL, JsonAutoDetect.Visibility.ANY);
+        // 指定序列化输入的类型，类必须是非final修饰的，final修饰的类，比如String,Integer等会跑出异常
+        om.enableDefaultTyping(ObjectMapper.DefaultTyping.NON_FINAL);
+        jackson2JsonRedisSerializer.setObjectMapper(om);
+
+        //序列号key value
+        redisTemplate.setKeySerializer(new StringRedisSerializer());
+        redisTemplate.setValueSerializer(jackson2JsonRedisSerializer);
+        redisTemplate.setHashKeySerializer(new StringRedisSerializer());
+        redisTemplate.setHashValueSerializer(jackson2JsonRedisSerializer);
+
+        redisTemplate.afterPropertiesSet();
+        return redisTemplate;
+    }
+
+    /**
+     * 设置CacheManager缓存规则
+     * @param factory
+     * @return
+     */
+    @Bean
+    public CacheManager cacheManager(RedisConnectionFactory factory) {
+        RedisSerializer<String> redisSerializer = new StringRedisSerializer();
+        Jackson2JsonRedisSerializer jackson2JsonRedisSerializer = new Jackson2JsonRedisSerializer(Object.class);
+
+        //解决查询缓存转换异常的问题
+        ObjectMapper om = new ObjectMapper();
+        om.setVisibility(PropertyAccessor.ALL, JsonAutoDetect.Visibility.ANY);
+        om.enableDefaultTyping(ObjectMapper.DefaultTyping.NON_FINAL);
+        jackson2JsonRedisSerializer.setObjectMapper(om);
+
+        // 配置序列化（解决乱码的问题）,过期时间600秒
+        RedisCacheConfiguration config = RedisCacheConfiguration.defaultCacheConfig()
+                .entryTtl(Duration.ofSeconds(600))
+                .serializeKeysWith(RedisSerializationContext.SerializationPair.fromSerializer(redisSerializer))
+                .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(jackson2JsonRedisSerializer))
+                .disableCachingNullValues();
+
+        RedisCacheManager cacheManager = RedisCacheManager.builder(factory)
+                .cacheDefaults(config)
+                .build();
+        return cacheManager;
+    }
+}
+```
+
+## 重要注解
+
+### @Cacehable
+
+当第一次查询数据库后，将数据添加到缓存中，第二次查询数据库时可以直接走缓存，不必再走数据库
+
+### @CachePut
+
+使用该注解标注的方法，每次都会执行，并将结构存入指定缓存中。其他方法可以直接从响应的缓存中国读取缓存数据，而不需要再去查询数据库。一般用在新增方法上
+
+### @CacheEvict
+
+清空指定缓存。一般用在更新或删除操作上
+
+## 开启redis
+
+url:  192.168.118.144:6379  
+
+root:  /usr/local/redis  
+
+密码：root  
+
+cli登录： auth root
+
+## 使用
+
+在查询方法上标注`@Cacheable`  
+
+```java
+@Cacheable(value = "dict",keyGenerator="keyGenerator")
+public List<Dict> getChildData(Long id)
+```
 
 
-<div class="app-container">
-        <el-table
-        :data="list"
-        style="width: 100%"
-        row-key="id"
-        border
-        lazy
-        :load="getChildrens"
-        :tree-props="{children: 'children', hasChildren: 'hasChildren'}">
-            <el-table-column label="名称" width="230" align="left">
-            <template slot-scope="scope">
-            <span>{{ scope.row.name }}</span>
-            </template>
-            </el-table-column>
+
+在更新方法上标注`@CacheEvit()`
+
+```java
+@CacheEvict(value = "dict",allEntries = true) //每次更新都会清空缓存
+public void importDict(MultipartFile file)
+```
+
+# 配置nginx
+
+## 修改配置文件
+
+监听9001端口，并匹配路径，路径中有`/hosp`则转发到`192.168.118.1:8201`中，路径中有`/dict`则转发到`192.168.118.1:8202`中
+
+## 启动nginx
+
+路径：/usr/local/nginx/sbin
+
+命令:`./nginx`
+
+## 修改前端配置文件
+
+修改前端的.env.development文件，改为`http://192.168.118.147:9001`
+
+# MongoDB
+
+MongoDB是一种NoSQL数据库，存储结构类似于JSON对象
+
+为何使用NooSQL：
+
+1. 对数据库的高并发读写
+2. 对海量数据的高效率存储和访问
+3. 对数据库的高可扩展性和高可用性
+
+缺点：
+
+1. 数据库事务一致性需求
+2. 数据库的写实时性和读实时性需求
+3. 对复杂的sql查询，特别是多表关联查询的需求
+
+## 安装mongoDB
+
+默认端口27017
+
+### 拉取docker镜像
+
+`docker pull mongo:latest`
+
+### 启动容器
+
+```
+docker run -d --restart=always -p 27017:27017 --name mymongo -v /mydata/mongoDB:/data/db -d mongo
+```
+
+### 进入容器
+
+```
+docker exec -it mymongo bin/bash 
+```
+
+然后开启客户端 `mongo`
+
+## 适用场景
+
+1. 网站数据：Mongo非常适合实时的插入，更新与查询，并具备网站实时数据存储所需的复制及高度伸缩性。
+
+2. 缓存：由于性能很高，Mongo也适合作为信息基础设施的缓存层。在系统重启之后，由M ongo搭建的持久化缓存层可以避免下层的数据源过载。
+
+3. 大尺寸，低价值的数据：使用传统的关系型数据库存储一些数据时可能会比较昂贵， 在此之前，很多时候程序员往往会选择传统的文件进行存储。
+
+4. 高伸缩性的场景：Mongo非常适合由数十或数百台服务器组成的数据库。Mongo的路线图中已经包含对Map Reduce弓摩的内置支持。
+
+5. 用于对象及 JSON数据的存储：Mongo的BSON数据格式非常适合文档化格式的存储 及查询。
+
+## 不适用场景
+
+1. 高度事务性的系统：例如银行或会计系统。传统的关系型数据库目前还是更适用于需要大量原子性复杂事务的应用程序。
+
+2. 传统的商业智能应用：针对特定问题的BI数据库会对产生高度优化的查询方式。对于此类应用，数据仓库可能是更合适的选择。
+
+## mongoDB学习
+
+1. `collection`数据库表/集合（table）
+2. `document`数据记录行/文档(row)
+3. `field`数据字典/域(column)
+4. **不支持表连接！！**
+5. 自动将`_id`设为主键
+
+### 基本命令
+
+`use test`：如果存在，则切换，不存在则创建
+
+`show dbs;` :查询所有数据库
+
+`db.dropDatabase();`删除当前使用数据库
+
+`db.getName();`：查看当前使用的数据库
+
+`db.stats();`:显示当前db状态
+
+# 整合医院系统
+
+医院系统主要用于模拟接口对接  
+
+直接在父工程下新建springBoot工程，然后复制粘贴即可  
+
+## 为何要整合？
+
+此项目为一个预约挂号平台，其中有 数据显示、挂号、预约等相关业务，这些功能需要一些信息，如：医院信息、科室信息、排班信息等。  
+
+这些信息是由各大医院进行添加的，并非我们第三方平台提供的，所以需要对每个医院的平台进行接口连接。  
+
+连接成功后，医院方可通过平台的接口上传科室信息、上传排班信息等
+
+# 开发对接医院接口
+
+## 整合mongoDB
+
+### 添加依赖
+
+在service_hosp中添加依赖
+
+```xml
+<dependencies>
+<!--        spring Boot整合mongoDB-->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-mongodb</artifactId>
+        </dependency
+</dependencies>
+```
+
+### 添加repository
+
+新建`repository.HospitalRepository`接口，继承`MongoRepository<Hospital,String> `，并添加注解`@Repository`
+
+## 添加service层
+
+新建`service.HospitalService`，实现类中注入依赖
+
+```java
+@Service
+public class HospitalServiceImpl implements HospitalService {
+    //因为service要调用mongoDB，所以注入依赖
+    @Autowired
+    private HospitalRepository hospitalRepository;
+}
+```
+
+## controller层
+
+因为此接口要对外进行调用，所以建在api下
+
+新建`api.ApiController`   
+
+调用接口`/api/hosp`
+
+# 上传医院接口
+
+## 接口地址
+
+`@PostMapping("saveHospital")`
+
+## controller层
+
+使用`HttpServletRequest`接收JSON传参  
+
+通过`request.getParameterMap()`获得map类型的医院信息。此时医院信息map中的value为String[]字符串数组，需要转为Object的value的Map  
+
+```java
+//获取传过来的医院信息
+Map<String, String[]> requestMap = request.getParameterMap();
+//将map的value类型从字符串数组改为object，使用自行封装的工具类
+Map<String, Object> paramMap = HttpRequestHelper.switchMap(requestMap);
+```
+
+将map传给service层做具体业务逻辑处理
+
+## service层
+
+将传来的map封装为实体类，以便更好地适配数据库进行存取。
+
+```java
+//把形参转换为实体类
+//把map转为JSON字符串，再将JSON字符串转为实体类
+String mapJSON = JSONObject.toJSONString(paramMap);
+Hospital hospital = JSONObject.parseObject(mapJSON, Hospital.class);
+```
+
+再根据hoscode查询是否有数据，没有则添加，有则修改
+
+```java
+//根据医院code判断数据库中是否有值
+String hoscode = hospital.getHoscode();
+Hospital hospitalExist = hospitalRepository.getHospitalByHoscode(hoscode);
+
+
+if(hospitalExist == null){
+    //没有则添加
+    hospital.setStatus(0);
+    hospital.setCreateTime(new Date());
+    hospital.setUpdateTime(new Date());
+    hospital.setIsDeleted(0);
+    hospitalRepository.save(hospital);
+
+}else {
+    //有则修改
+    hospital.setStatus(hospitalExist.getStatus());
+    hospital.setCreateTime(hospitalExist.getCreateTime());
+    hospital.setUpdateTime(new Date());
+    hospital.setIsDeleted(0);
+    //修改完成
+    hospitalRepository.save(hospital);
+}
+```
+
+
+
+## repository层
+
+因为Spring Data提供了支持，我们只需要按照Spring Data规范写方法名即可，无需写方法的具体实现。  
+
+查询方法以`get|find|read`开头都可以
+
+# 签名校验
+
+为了保证接口的安全性，对调用者的签名进行校验，校验失败无法进行调用
+
+## 获取医院方签名
+
+在controller中判断hoscode是否存在，不存在则抛出异常`throw new YyghException(ResultCodeEnum.PARAM_ERROR);`  
+
+因为医院方传输的base64格式中的`+`被自动解析成了字符串连接符，变为了`" "`，导致md5验证失败，所以在校验前务必转换格式，将所有的`" "`转换回`+`  
+
+```java
+//血妈坑壁！！！！艹！
+//传输过程中“+”转换为了“ ”，因此我们要转换回来
+String logoDataString = (String)paramMap.get("logoData");
+if(!StringUtils.isEmpty(logoDataString)) {
+    String logoData = logoDataString.replaceAll(" ", "+");
+    paramMap.put("logoData", logoData);
+}
+```
+
+将本地的签名取出，加密后与医院方的签名进行匹配  
+
+```java
+//将本地签名取出
+String hoscode = (String) paramMap.get("hoscode");
+String hospSetSign = hospitalSetService.getSignKey(hoscode);
+
+//使用封装好的工具类来校验
+if (!HttpRequestHelper.isSignEquals(paramMap,hospSetSign)){
+    throw new YyghException(ResultCodeEnum.SIGN_ERROR);
+}
+```
+
+加密算法：将paramMap中的所有元素进行拼接，并拼接上本地Sign，进行MD5加密
+
+```java
+if(paramMap.containsKey("sign")) {
+    paramMap.remove("sign");
+}
+//TreeMap保证有序
+TreeMap<String, Object> sorted = new TreeMap<>(paramMap);
+StringBuilder str = new StringBuilder();
+for (Map.Entry<String, Object> param : sorted.entrySet()) {
+    str.append(param.getValue().toString()).append("|");
+}
+str.append(signKey);
+//明文
+String plaintext = str.toString();
+log.info("加密前：" + plaintext);
+//密文
+String md5Str = MD5.encrypt(plaintext);
+log.info("加密后：" + md5Str);
+return md5Str;
+```
+
+医院方为了保证每次发送的密文不同，在paramMap中加入了时间戳
+
+# 查询医院接口
+
+## controller层
+
+接口：`hospital/show`  ,POST方式，需要使用`HttpServletRequest`类来接收请求
+
+## 封装校验函数
+
+因为校验函数频繁使用，所以封装一下，可以封装为工具类，我选择封装到service层业务逻辑中（别学我）
+
+```java
+public void verificationSign(Map<String, Object> paramMap) {
+    //验证hoscode是否存在
+    if(StringUtils.isEmpty(paramMap.get("hoscode"))){
+        throw new YyghException(ResultCodeEnum.PARAM_ERROR);
+    }
+
+
+    //将本地签名取出
+    String hoscode = (String) paramMap.get("hoscode");
+    String hospSetSign = getSignKey(hoscode);
+
+    //使用封装好的工具类来校验
+    if (!HttpRequestHelper.isSignEquals(paramMap,hospSetSign)){
+        throw new YyghException(ResultCodeEnum.SIGN_ERROR);
+    }
+}
+```
+
+
+
+# 使用Repository对MongoDB进行分页查询
+
+## 方法传入参数
+
+- page：当前页码
+- limit：每页记录数
+- userQueryVo：当前实体类的QueryVo对象
+
+## 方法返回值
+
+org.springframework.data.domain.page对象，是一个分页结果对象，包含记录数、页码、查出的记录等待分页查询结果
+
+## 常用方法及对象
+
+- Pageable：分页对象，传给`repository.findAll()`中。
+- `PageRequest.of(page,limit,sort)`：返回Pageable分页对象。传入参数：当前页码、每页记录数、sort排序对象
+- Sort：排序对象，传给`PageRequest.of()`方法设置排序规则
+- `Sort.by(Sort.Direction.DESC,"createTime")`：返回排序对象，传入参数：排序规则、依据字段字符串
+- ExampleMatcher：条件匹配器，用于设置限制条件，如模糊搜索、忽视大小写。传给`Example.of()`方法
+- Example\<User\> ：条件匹配器实例，传给`userRepository.findAll()`方法
+- `Example.of(user,matcher)`：返回Example\<User\>对象，传入参数：实体类对象、matcher条件匹配器。
+- `userRepository.finAll(example,pageable)`：返回Page\<User\>分页结果对象。传入参数：example条件匹配器实例对象，pageable分页对象
+
+## 实例代码：分页查询科室信息
+
+```java
+public Page<Schedule> findPageSchedule(int page, int limit, ScheduleQueryVo scheduleQueryVo) {
+    //查出的结果以创建时间排序
+    Sort sort = Sort.by(Sort.Direction.DESC,"createTime");
+    //创建分页对象,参数为当前页码，每页记录数，排序规则
+    Pageable pageable = PageRequest.of(page,limit,sort);
+    //条件匹配器实例需要实体类型的对象，所以new一个
+    Schedule schedule = new Schedule();
+    //为实体类型的对象赋值，使用工具类直接copy,将前者的值copy给后者
+    BeanUtils.copyProperties(scheduleQueryVo,schedule);
+    //不要忘了设置状态和逻辑删除标志
+    schedule.setIsDeleted(0); //0为未删除
+    schedule.setStatus(1);  //1为可用
+
+    //创建条件匹配器，设置限制条件
+    ExampleMatcher matcher = ExampleMatcher.matching() //构建对象
+        .withStringMatcher(ExampleMatcher.StringMatcher.CONTAINING)  //改变默认字符串匹配规则：模糊搜索
+        .withIgnoreCase(true);  //忽视大小写
+    //Example.of()传入实体类型schedule和条件匹配器(ExampleMather)，返回条件匹配器实例
+    Example<Schedule> example = Example.of(schedule, matcher);
+    //使用findAll方法分页查询，传入条件匹配器实例Example和分页对象
+    Page<Schedule> pages = scheduleRepository.findAll(example,pageable);
+    return pages;
+}
+```
+
+# 接入微服务！！！
+
+# 医院管理模块
+
+service_hosp模块要调用service_dict模块，属于微服务之间的调用（远程调用）
+
+# 接入Nacos
+
+启动nacos（windows本机8848端口）  
+
+## 注入依赖
+
+
+

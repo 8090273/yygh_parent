@@ -2,6 +2,7 @@ package com.teen.yygh.dict.service;
 
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.teen.yygh.model.cmn.Dict;
+import org.springframework.web.multipart.MultipartFile;
 
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
@@ -17,4 +18,5 @@ public interface DictService extends IService<Dict> {
 
     void exportDictData(HttpServletResponse response) throws IOException;
 
+    void importDict(MultipartFile file);
 }

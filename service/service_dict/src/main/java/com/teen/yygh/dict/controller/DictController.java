@@ -7,6 +7,7 @@ import com.teen.yygh.model.cmn.Dict;
 import io.swagger.annotations.ApiOperation;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
@@ -33,9 +34,16 @@ public class DictController {
 
     @GetMapping("exportData")
     @ApiOperation("导出数据字典")
-    public Result exportData(HttpServletResponse response) throws IOException {
+    public void exportData(HttpServletResponse response) throws IOException {
         dictService.exportDictData(response);
+    }
+
+    @PostMapping("importData")
+    @ApiOperation("导入表格到数据字典")
+    public Result importData(MultipartFile file){
+        dictService.importDict(file);
         return Result.ok();
+
     }
 
 }

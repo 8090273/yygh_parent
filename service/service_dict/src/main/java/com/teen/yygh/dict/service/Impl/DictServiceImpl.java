@@ -3,17 +3,20 @@ package com.teen.yygh.dict.service.Impl;
 import com.alibaba.excel.EasyExcel;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import com.fasterxml.jackson.databind.util.BeanUtil;
+import com.teen.yygh.dict.listener.DictListener;
 import com.teen.yygh.dict.mapper.DictMapper;
 import com.teen.yygh.dict.service.DictService;
 import com.teen.yygh.model.cmn.Dict;
 import com.teen.yygh.vo.cmn.DictEeVo;
 import org.springframework.beans.BeanUtils;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
 import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.List;
@@ -25,8 +28,12 @@ import java.util.List;
 @Service
 public class DictServiceImpl extends ServiceImpl<DictMapper, Dict> implements DictService  {
 
+    @Autowired
+    DictMapper dictMapper;
+
     //根据id查询数据
     @Override
+    @Cacheable(value = "dict",keyGenerator="keyGenerator")
     public List<Dict> getChildData(Long id) {
         QueryWrapper wrapper = new QueryWrapper();
         wrapper.eq("parent_id",id);
@@ -35,6 +42,7 @@ public class DictServiceImpl extends ServiceImpl<DictMapper, Dict> implements Di
         for (Dict dict: list) {
             dict.setHasChildren(hasChild(dict.getId()));
         }
+        System.out.println("查询了数据库！");
         return list;
     }
 
@@ -53,6 +61,7 @@ public class DictServiceImpl extends ServiceImpl<DictMapper, Dict> implements Di
         //设置下载信息
         response.setContentType("application/vnd.ms-excel");
         response.setCharacterEncoding("utf-8");
+        //防止中文乱码
         String fileName = URLEncoder.encode("数据字典","utf-8");
         //以下载方式打开
         response.setHeader("Content-disposition","attachment;filename="+fileName+".xlsx");
@@ -71,5 +80,18 @@ public class DictServiceImpl extends ServiceImpl<DictMapper, Dict> implements Di
         EasyExcel.write(response.getOutputStream(),DictEeVo.class).sheet("数据字典")
                 .doWrite(dictEeVos);
 
+    }
+
+    //导入表格数据到数据字典
+
+    @Override
+    @CacheEvict(value = "dict",allEntries = true) //每次更新都会清空缓存
+    public void importDict(MultipartFile file) {
+        try {
+            EasyExcel.read(file.getInputStream(),DictEeVo.class,new DictListener(dictMapper)).sheet().doRead();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        System.out.println("刷新了缓存");
     }
 }

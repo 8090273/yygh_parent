@@ -1,5 +1,6 @@
 package com.teen.yygh.model.hosp;
 
+import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import com.teen.yygh.model.base.BaseMongoEntity;
 import io.swagger.annotations.ApiModel;
@@ -7,6 +8,7 @@ import io.swagger.annotations.ApiModelProperty;
 import lombok.Data;
 import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
+import org.springframework.util.StringUtils;
 
 /**
  * <p>
@@ -64,6 +66,10 @@ public class Hospital extends BaseMongoEntity {
 	public void setBookingRule(String bookingRule) {
 		this.bookingRule = JSONObject.parseObject(bookingRule, BookingRule.class);
 	}
+
+
+
+
 
 }
 
