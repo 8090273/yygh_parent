@@ -74,7 +74,7 @@ public class HospitalSetController {
      * @param hospitalQueryVo 医院vo类
      * @return
      */
-    @ApiOperation(value = "条件查询带分页")
+    @ApiOperation(value = "条件查询带分页查询医院设置")
     @PostMapping("findHospitalSet/{current}/{limit}")
     public Result findHospSet(@PathVariable Long current,
                               @PathVariable Long limit,
@@ -101,7 +101,7 @@ public class HospitalSetController {
      * @param hospitalSet JSON格式的对象
      * @return ok或fail
      */
-    @ApiOperation("添加一个医院的信息")
+    @ApiOperation("添加一个医院设置的信息")
     @PostMapping("saveHospitalSet")
     public Result saveHospitalSet(@RequestBody HospitalSet hospitalSet){
         //需要手动设置两个属性：密钥和状态
@@ -127,7 +127,7 @@ public class HospitalSetController {
      * @param id 医院id
      * @return 医院对象
      */
-    @ApiOperation("根据id获取医院")
+    @ApiOperation("根据id获取医院设置")
     @GetMapping("getHospitalSet/{id}")
     public Result getHospitalSet(@PathVariable Long id){
         HospitalSet hospitalSet = hospitalSetService.getById(id);
@@ -139,7 +139,7 @@ public class HospitalSetController {
      * @param hospitalSet 医院JSON，只有一个
      * @return
      */
-    @ApiOperation("修改医院信息")
+    @ApiOperation("修改医院设置信息")
     @PostMapping("updateHospitalSet")
     public Result updateHospitalSet(@RequestBody HospitalSet hospitalSet){
         boolean flag = hospitalSetService.updateById(hospitalSet);
@@ -155,7 +155,7 @@ public class HospitalSetController {
      * @param idList 元素为id的List集合
      * @return 返回ok
      */
-    @ApiOperation("批量删除医院，传入id列表")
+    @ApiOperation("批量删除医院设置，传入id列表")
     @DeleteMapping("batchRemove")
     public Result batchRemoveHospitalSet(@RequestBody List<Long> idList){
         hospitalSetService.removeByIds(idList);

@@ -307,5 +307,70 @@ tnnd！！！！
 
 忙活7个小时，不如摆烂五分钟。真正意义上的漏洞
 
+# 后端微服务service-hosp的接口`@GetMapping("list/{page}/{limit}")`报错ribbonServerList创建Bean异常（重复多次）
 
+## 描述
 
+后台的前端访问医院列表时返回“失败”信息，经排查是微服务service-hosp出错，报错` Error creating bean with name 'ribbonServerList' defined in com.alibaba.cloud.nacos.ribbon.NacosRibbonClientConfiguration`创建ribbonServiceList失败  
+
+  `Error creating bean with name 'ribbonClientConfig' defined in org.springframework.cloud.netflix.ribbon.RibbonClientConfiguration` 创建ribbonClientConfig失败
+
+## 原因
+
+可能是依赖冲突，反正Maven日常犯病
+
+## 解决
+
+刷新了一下maven就好了
+
+## 总结
+
+maven真的耽误事，好多次了
+
+# 前端bug医院列表数据显示不完全
+
+## 描述
+
+医院列表组件，未显示等级信息（三甲医院）
+
+## 原因
+
+response.data中的key值不对，应该取`hospitalLevel`
+
+## 解决
+
+将医院等级栏改为`<el-table-column prop="param.hospitalLevel" label="等级" width="90"/>`即可
+
+## 总结
+
+对响应的数据不够了解，回头要通读代码
+
+# 前端bug选择市后不在其中填入
+
+## 描述
+
+## 原因
+
+## 解决
+
+待解决
+
+## 总结
+
+## 前端Bug点击查看医院详情时导航栏消失
+
+## 描述
+
+点击查看医院详情时跳转到隐藏页面，但导航栏消失了
+
+## 原因
+
+隐藏路由设置在了外部
+
+## 解决
+
+将隐藏路由设置在`/hospSet`内部即可
+
+## 总结
+
+前端知识忘差不多了

@@ -27,6 +27,12 @@
             <artifactId>spring-boot-test</artifactId>
             <scope>test</scope>
         </dependency>
+<!--        引入openFeign的client端-->
+        <dependency>
+            <groupId>com.teen</groupId>
+            <artifactId>service_dict_client</artifactId>
+            <version>0.0.1-SNAPSHOT</version>
+        </dependency>
     </dependencies>
 
 </project>

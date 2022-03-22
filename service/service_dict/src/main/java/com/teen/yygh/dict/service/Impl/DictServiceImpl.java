@@ -13,6 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import javax.servlet.http.HttpServletResponse;
@@ -93,5 +94,72 @@ public class DictServiceImpl extends ServiceImpl<DictMapper, Dict> implements Di
             e.printStackTrace();
         }
         System.out.println("刷新了缓存");
+    }
+
+    //根据dictCode和value查询数据字典名称
+    @Override
+    public String getDictName(String dictCode, String value) {
+        //如果dictCode为空，只根据value查询
+        if(StringUtils.isEmpty(dictCode)){
+            QueryWrapper wrapper = new QueryWrapper();
+            wrapper.eq("value",value);
+            Dict dict = baseMapper.selectOne(wrapper);
+            return dict.getName();
+        }else {
+            //select name from dict where value = 1 and parent_id = (select id from dict where dict_code)
+            Dict codeDict = this.getDictByDictCode(dictCode);
+            Long parentId = codeDict.getId();
+            //根据parentId和value查询
+            //注意：.eq方法中的字段必须对应数据库中的字段，驼峰不会被解析
+            Dict finalDict = dictMapper.selectOne(new QueryWrapper<Dict>()
+                    .eq("parent_id",parentId)
+                    .eq("value",value));
+            return finalDict.getName();
+        }
+    }
+
+    @Override
+    @Cacheable(value = "dict",keyGenerator = "keyGenerator")
+    public String getNameByParentDictCodeAndValue(String parentDictCode, String value) {
+        //如果value能唯一定位数据字典，parentDictCode可以传空，例如：省市区的value值能够唯一确定
+        if(StringUtils.isEmpty(parentDictCode)) {
+            Dict dict = dictMapper.selectOne(new QueryWrapper<Dict>().eq("value", value));
+            if(null != dict) {
+                return dict.getName();
+            }
+        } else {
+            Dict parentDict = this.getDictByDictCode(parentDictCode);
+            if(null == parentDict) return "";
+            Dict dict = dictMapper.selectOne(new QueryWrapper<Dict>().eq("parent_id", parentDict.getId()).eq("value", value));
+            if(null != dict) {
+                return dict.getName();
+            }
+        }
+        return "";
+    }
+
+    /**
+     * 根据DictCode查询第一层级的id，再根据id查询其子节点
+     * @param dictCode
+     * @return
+     */
+    @Override
+    public List<Dict> findChildByDictCode(String dictCode) {
+        Dict codeDict = this.getDictByDictCode(dictCode);
+        if(null == codeDict) return null;
+        return this.getChildData(codeDict.getId());
+    }
+
+
+    /**
+     * 根据dictCode查询Dict
+     * @param dictCode
+     * @return
+     */
+    private Dict getDictByDictCode(String dictCode){
+        QueryWrapper wrapper = new QueryWrapper();
+        wrapper.eq("dict_code",dictCode);
+        Dict dict = dictMapper.selectOne(wrapper);
+        return dict;
     }
 }

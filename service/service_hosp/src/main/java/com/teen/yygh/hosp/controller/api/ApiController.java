@@ -50,6 +50,11 @@ public class ApiController {
     @Autowired
     private ScheduleService scheduleService;
 
+    /**
+     * 删除排班信息
+     * @param request
+     * @return
+     */
     @PostMapping("schedule/remove")
     public Result remove(HttpServletRequest request){
         //将参数转换

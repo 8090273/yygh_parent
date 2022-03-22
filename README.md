@@ -853,5 +853,157 @@ service_hosp模块要调用service_dict模块，属于微服务之间的调用�
 
 ## 注入依赖
 
+```xml
+<!-- 服务注册 -->
+<dependency>
+    <groupId>com.alibaba.cloud</groupId>
+    <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
+</dependency>
+```
 
+## 主启动类上标注注解
+
+在dict模块和hosp模块的主启动类上标注`@EnableDiscoveryClient`开启服务发现
+
+## 配置文件
+
+配置文件中添加nacos设置  
+
+```properties
+spring.cloud.nacos.discovery.server-addr=127.0.0.1:8848
+```
+
+# 使用Feign服务调用
+
+## 新建模块
+
+新建一个service_client,并在此模块下新建一个新模块service_dict_client
+
+## 添加依赖
+
+在service_client模块中添加依赖  
+
+```xml
+<dependency>
+    <groupId>com.teen</groupId>
+    <artifactId>common_util</artifactId>
+    <version>1.0</version>
+</dependency>
+
+<dependency>
+    <groupId>com.teen</groupId>
+    <artifactId>model</artifactId>
+    <version>1.0</version>
+</dependency>
+
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-web</artifactId>
+</dependency>
+<dependency>
+    <groupId>org.springframework.cloud</groupId>
+    <artifactId>spring-cloud-starter-openfeign</artifactId>
+    <scope>provided</scope>
+</dependency>
+```
+
+## 创建调用接口
+
+在service_dict_client模块下创建`com.teen.yygh.dict.client.DictFeignClient`接口  
+
+接口上标注`@FeignClient("service-dict")`来开启对微服务的调用  
+
+将接口声明出来，记得路径补全
+
+```java
+@FeignClient("service-dict")
+public interface DictFeignClient {
+
+    /**
+     * 调用dict端的接口，根据dictCode和value查询数据字典名称
+     * 注意：@PathVariable中必须指明参数
+     * @param dictCode
+     * @param value
+     * @return
+     */
+    @GetMapping("/admin/dict/getDickName/{dictCode}/{value}")
+    public String getDickName(@PathVariable("dictCode") String dictCode,
+                              @PathVariable("value") String value);
+
+    @GetMapping("/admin/dict/getDickName/{value}")
+    public String getDictName(@PathVariable("value") String value);
+}
+```
+
+## 在调用端引入Client
+
+service-hosp要调用service-dict，所以需要在service_hosp模块中引入service_dict_clietn模块  
+
+在service_hosp的pom文件中
+
+```xml
+<dependency>
+    <groupId>com.teen</groupId>
+    <artifactId>service_dict_client</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+</dependency>
+```
+
+因为要使用注解，所以添加依赖  
+
+```xml
+<!-- 服务调用feign -->
+<dependency>
+    <groupId>org.springframework.cloud</groupId>
+    <artifactId>spring-cloud-starter-openfeign</artifactId>
+</dependency>
+```
+
+## 整合使用openFeign
+
+在service_hosp模块的主启动类上添加注解`@EnableFeignClients(basePackages = "com.teen")`来开启远程服务调用  
+
+在service_hosp模块下的`service.Impl.HospitalServiceImpl`中注入依赖  
+
+```java
+@Autowired
+private DictFeignClient dictFeignClient;
+```
+
+为了让springBoot可管理依赖，在DictFeignClient中标注`@Repository`或`@Service`
+
+### 完善业务
+
+之前通过`Page<Hospital> pages = hospitalRepository.findAll(example,pageable);`得到的分页查询结果中，通过`.getContent()`可得到对象列表  
+
+使用java8新特性流写法来完成最后的获取医院等级  
+
+```java
+pages.getContent().stream().forEach(item -> {
+    this.setHospitalHosType(item);
+});
+```
+
+通过`dictFeignClient.getDictName()`可以远程调用其他微服务中的接口  
+
+```java
+private Hospital setHospitalHosType(Hospital hospital) {
+    //在这里使用feign远程调用微服务完成业务
+    //根据dictCode和value（Hostype）来获取医院等级
+    String hospitalLevel = dictFeignClient.getDickName("Hostype", hospital.getHostype());
+
+    //练习
+    //查询省
+    String province = dictFeignClient.getDictName(hospital.getProvinceCode());
+    //查询市
+    String city = dictFeignClient.getDictName(hospital.getCityCode());
+    //地区
+    String district = dictFeignClient.getDictName(hospital.getDistrictCode());
+    //练习end
+    //并放入param属性中
+    hospital.getParam().put("Address",province+city+district);
+    hospital.getParam().put("hospitalLevel",hospitalLevel);
+    return hospital;
+}
+```
 

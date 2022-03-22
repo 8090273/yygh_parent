@@ -19,4 +19,10 @@ public interface DictService extends IService<Dict> {
     void exportDictData(HttpServletResponse response) throws IOException;
 
     void importDict(MultipartFile file);
+
+    String getDictName(String dictCode, String value);
+
+    String getNameByParentDictCodeAndValue(String parentDictCode, String value);
+
+    List<Dict> findChildByDictCode(String dictCode);
 }

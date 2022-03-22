@@ -1,7 +1,10 @@
 package com.teen.yygh.hosp.service;
 
 import com.teen.yygh.model.hosp.Hospital;
+import com.teen.yygh.vo.hosp.HospitalQueryVo;
+import org.springframework.data.domain.Page;
 
+import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -12,4 +15,10 @@ public interface HospitalService {
     void save(Map<String, Object> paramMap);
 
     Hospital getByHoscode(String hoscode);
+
+    Page<Hospital> selectHospPage(Integer page, Integer limit, HospitalQueryVo hospitalQueryVo);
+
+    void updateStatus(String id, Integer status);
+
+    HashMap<String,Object> getHospitalById(String id);
 }
