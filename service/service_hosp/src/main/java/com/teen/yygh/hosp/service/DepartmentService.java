@@ -2,8 +2,10 @@ package com.teen.yygh.hosp.service;
 
 import com.teen.yygh.model.hosp.Department;
 import com.teen.yygh.vo.hosp.DepartmentQueryVo;
+import com.teen.yygh.vo.hosp.DepartmentVo;
 import org.springframework.data.domain.Page;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -16,4 +18,8 @@ public interface DepartmentService {
     Page<Department> findPageDepartment(int page, int limit, DepartmentQueryVo departmentQueryVo);
 
     void remove(String hoscode, String depcode);
+
+    List<DepartmentVo> findDepartmentTree(String hoscode);
+
+    String getDepname(String hoscode, String depcode);
 }

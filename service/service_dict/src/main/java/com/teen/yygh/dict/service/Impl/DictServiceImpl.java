@@ -32,14 +32,18 @@ public class DictServiceImpl extends ServiceImpl<DictMapper, Dict> implements Di
     @Autowired
     DictMapper dictMapper;
 
-    //根据id查询数据
+    /**
+     * 将id作为parent_id，查询所有parent_id为`id`的记录
+     * @param id
+     * @return
+     */
     @Override
     @Cacheable(value = "dict",keyGenerator="keyGenerator")
     public List<Dict> getChildData(Long id) {
         QueryWrapper wrapper = new QueryWrapper();
         wrapper.eq("parent_id",id);
         List<Dict> list = baseMapper.selectList(wrapper);
-        //为每个dict对象的hasChild属性赋值
+        //为每个dict对象的hasChild属性赋值，当孩子节点还有孩子节点时，前端可以继续递归查询
         for (Dict dict: list) {
             dict.setHasChildren(hasChild(dict.getId()));
         }
@@ -48,6 +52,11 @@ public class DictServiceImpl extends ServiceImpl<DictMapper, Dict> implements Di
     }
 
     //还要判断子节点是否有子节点
+    /**
+     * 判断此节点是否有孩子节点
+     * @param id
+     * @return 返回布尔值，有则为真
+     */
     public boolean hasChild(Long id){
         QueryWrapper wrapper = new QueryWrapper();
         wrapper.eq("parent_id",id);

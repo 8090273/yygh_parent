@@ -972,7 +972,60 @@ private DictFeignClient dictFeignClient;
 
 为了让springBoot可管理依赖，在DictFeignClient中标注`@Repository`或`@Service`
 
-### 完善业务
+### 完善分页查询医院业务（使用SpringData分页功能）
+
+#### controller层
+
+```java
+@ApiOperation(value = "分页查询医院信息")
+    @GetMapping("list/{page}/{limit}")
+    public Result listHosp(@PathVariable Integer page,
+                           @PathVariable Integer limit,
+                           HospitalQueryVo hospitalQueryVo){
+        //条件查询带分页的查询都应经过QueryVo类进行封装
+
+        //因为医院数据都存在mongodb中
+        Page<Hospital> pageModel = hospitalService.selectHospPage(page,limit,hospitalQueryVo);
+
+        return Result.ok(pageModel);
+
+    }
+```
+
+#### service层实现类
+
+通过SpringData的分页功能实现
+
+```java
+@Override
+    public Page<Hospital> selectHospPage(Integer page, Integer limit, HospitalQueryVo hospitalQueryVo) {
+        //凭自己感觉写写试试？ 写出来辣~
+
+        Hospital hospital = new Hospital();
+        BeanUtils.copyProperties(hospitalQueryVo,hospital);
+
+        //设置排序规则
+        Sort sort = Sort.by(Sort.Direction.DESC,"createTime");
+        //核心 分页对象
+        Pageable pageable = PageRequest.of(page-1,limit,sort);
+        ExampleMatcher matcher = ExampleMatcher.matching().withStringMatcher(ExampleMatcher.StringMatcher.CONTAINING)
+                .withIgnoreCase(true);
+        Example example = Example.of(hospital,matcher);
+
+        //使用Repository查询出mongodb中的数据
+        Page<Hospital> pages = hospitalRepository.findAll(example,pageable);
+        //从pages中取出对象  取出的是mongodb中所有医院的详细信息，但其中不包括医院等级，医院等级在dict中，需要远程调用dict微服务中的接口获取医院等级
+//        List<Hospital> hospitalList = pages.getContent(); 这是原写法
+        //Hospital类中有一个param属性，是一个HashMap集合，里边可添加其他参数
+        //可改成java8新特性中的stream()流写法+lambda表达式写法
+        pages.getContent().stream().forEach(item -> {
+            this.setHospitalHosType(item);
+        });
+
+
+        return pages;
+    }
+```
 
 之前通过`Page<Hospital> pages = hospitalRepository.findAll(example,pageable);`得到的分页查询结果中，通过`.getContent()`可得到对象列表  
 
@@ -1004,6 +1057,463 @@ private Hospital setHospitalHosType(Hospital hospital) {
     hospital.getParam().put("Address",province+city+district);
     hospital.getParam().put("hospitalLevel",hospitalLevel);
     return hospital;
+}
+```
+
+# 数据字典显示接口
+
+根据DictCode获取其下级节点，DictCode为具体字典类别（Province省、computer电脑、Hostype医院等级等）  
+
+主要用于查询省，用于初始化前端的下拉框中的省、市
+
+## controller层
+
+```java
+/**
+     * 根据dictCode来获取省id 86，
+     * 再根据id 86联动查询出具体的省市
+     * @param dictCode
+     * @return
+     */
+    @ApiOperation(value = "根据dictCode获取下级节点")
+    @GetMapping(value = "/findChildByDictCode/{dictCode}")
+    public Result<List<Dict>> findChildByDictCode(
+            @ApiParam(name = "dictCode", value = "节点编码", required = true)
+            @PathVariable String dictCode) {
+        List<Dict> list = dictService.findChildByDictCode(dictCode);
+        return Result.ok(list);
+    }
+```
+
+## service层
+
+```java
+/**
+     * 根据DictCode查询第一层级的id，再将id作为parentId查询其子节点
+     * @param dictCode
+     * @return
+     */
+    @Override
+    public List<Dict> findChildByDictCode(String dictCode) {
+        Dict codeDict = this.getDictByDictCode(dictCode);
+        if(null == codeDict) return null;
+        return this.getChildData(codeDict.getId());
+    }
+```
+
+调用了getDictByDictCode方法，此方法通过dict_code查询dict_code为`省`的记录，返回该记录
+
+```java
+/**
+     * 根据dictCode查询Dict
+     * @param dictCode
+     * @return
+     */
+    private Dict getDictByDictCode(String dictCode){
+        QueryWrapper wrapper = new QueryWrapper();
+        wrapper.eq("dict_code",dictCode);
+        Dict dict = dictMapper.selectOne(wrapper);
+        return dict;
+    }
+```
+
+之后调用了getChildData方法，此方法将id作为parentId查询所有parentId为id的所有记录
+
+```java
+/**
+     * 将id作为parent_id，查询所有parent_id为`id`的记录
+     * @param id
+     * @return
+     */
+    @Override
+    @Cacheable(value = "dict",keyGenerator="keyGenerator")
+    public List<Dict> getChildData(Long id) {
+        QueryWrapper wrapper = new QueryWrapper();
+        wrapper.eq("parent_id",id);
+        List<Dict> list = baseMapper.selectList(wrapper);
+        //为每个dict对象的hasChild属性赋值，当孩子节点还有孩子节点时，前端可以继续递归查询
+        for (Dict dict: list) {
+            dict.setHasChildren(hasChild(dict.getId()));
+        }
+        System.out.println("查询了数据库！");
+        return list;
+    }
+
+    //还要判断子节点是否有子节点
+    /**
+     * 判断此节点是否有孩子节点
+     * @param id
+     * @return 返回布尔值，有则为真
+     */
+    public boolean hasChild(Long id){
+        QueryWrapper wrapper = new QueryWrapper();
+        wrapper.eq("parent_id",id);
+        Integer count = baseMapper.selectCount(wrapper);
+        return count > 0;
+    }
+```
+
+# 更新医院上线状态接口
+
+后台的前端点击改变医院上线信息后，要更新医院上下线状态，此状态决定是否在前台给患者显示医院
+
+## controller层
+
+```java
+/**
+     * 改变医院的上线状态
+     * @param id 通过id查询具体医院
+     * @param status 应修改的医院状态
+     * @return
+     */
+    @ApiOperation(value = "改变医院上线状态")
+    @GetMapping("updateHospitalStatus/{id}/{status}")
+    public Result updateHospitalStatus(@PathVariable String id,
+                                       @PathVariable Integer status){
+        hospitalService.updateStatus(id,status);
+        return Result.ok();
+    }
+```
+
+## service层
+
+```java
+/**
+     * 修改医院的上线状态
+     * @param id
+     * @param status
+     */
+    @Override
+    public void updateStatus(String id, Integer status) {
+        //根据id查询出对象
+        Hospital hospital = hospitalRepository.findById(id).get();
+        hospital.setStatus(status);
+        hospital.setUpdateTime(new Date());
+        hospitalRepository.save(hospital);
+    }
+```
+
+# 查看医院详情接口
+
+当前端点击查看时，携带id请求接口，此接口返回一个HashMap集合，包含两个key：`hospital`医院信息、 `bookingRule`预约规则信息
+
+## controller层
+
+```java
+/**
+     * 根据id查询医院的具体信息
+     * @param id
+     * @return 返回HashMap集合 key： "hospital" "bookingRule"
+     */
+@ApiOperation(value = "查询医院详情信息")
+@GetMapping("showHospitalDetails/{id}")
+public Result showHospitalDetails(@PathVariable String id){
+    //返回的是一个HashMap集合，包含hospital和bookingRule
+    return Result.ok(hospitalService.getHospitalById(id));
+}
+```
+
+## service层
+
+通过id查到MongoDB中的医院信息，因为MongoDB中的信息不含医院等级和医院地址（使用逻辑外键存储），所以需要调用数据字典微服务，给查出的医院设置上等级信息、具体地址。  
+
+而为了方便前端查询，我们将预约规则单独拎出来返回，所以使用了HashMap。HaspMap在底层会
+
+```java
+/**
+ * 通过id获取医院的具体信息
+ * @param id
+ * @return
+ */
+@Override
+public HashMap<String, Object> getHospitalById(String id) {
+    HashMap<String, Object> map = new HashMap<>();
+    Hospital hospital = hospitalRepository.findById(id).get();
+    hospital = this.setHospitalHosType(hospital);
+    map.put("hospital",hospital);
+    map.put("bookingRule",hospital.getBookingRule());
+
+    //因为不需要重复返回，所以把实体中的属性清空
+    hospital.setBookingRule(null);
+    return map;
+}
+```
+
+# 排班接口
+
+用来管理各个医院排班信息
+
+## 新建排班Controller
+
+在service_hosp模块下新建`controller.DepartmentController`  
+
+加上注解`@RestController` `@RequestMapping("/admin/hosp/department")` `@CrossOrigin`
+
+# 查询医院所有科室列表接口
+
+通过hoscode来查询此医院的所有科室，返回科室列表list，因为一个科室可能包含多个小科室，所以应使用泛型`DepartmentVo`
+
+## controller层
+
+```java
+@ApiOperation(value = "查询医院的所有科室列表")
+@GetMapping("getDepartmentList/{hoscode}")
+public Result getDepartmentList(@PathVariable String hoscode){
+    //科室可能还包含小科室，所以应该使用DepartmentVo，此对象中有属性children为子科室列表
+    List departmentList =  departmentService.findDepartmentTree(hoscode);
+
+    return Result.ok(departmentList);
+}
+```
+
+## service层
+
+```java
+/**
+ * 根据hoscode查询此医院下所有科室
+ * @param hoscode
+ * @return
+ */
+@Override
+public List<DepartmentVo> findDepartmentTree(String hoscode) {
+    List<DepartmentVo> result = new ArrayList<>();
+    //根据医院编号查询医院所有科室信息
+    Department departmentQuery = new Department();
+    departmentQuery.setHoscode(hoscode);
+    //创建mongoDB中的example
+    Example<Department> example = Example.of(departmentQuery);
+    //数据库中所有科室的列表信息
+    List<Department> departmentDbList = departmentRepository.findAll(example);
+
+    //根据大科室的编号 bigcode 分组， 获取每个大科室里面下级子科室
+    //使用java8新特性stream流 的分组
+    Stream<Department> departmentStream = departmentDbList.stream(); //将集合变为流,基于流的计算并不改变原数据结构
+    //对流做筛选分组 ,返回Map集合，key是科室编号，List是大科室下的小科室信息
+    Map<String, List<Department>> departmentMap = departmentStream.collect(Collectors.groupingBy(Department::getDepcode));
+    //同等写法
+    /*Map<String,List<Department>> map = new HashMap<>();
+    for (Department department : departmentList) {
+        if (map.get(department.getHoscode()).isEmpty()){
+            List list = new ArrayList();
+            list.add(department);
+            map.put(department.getHoscode(),list);
+        }else {
+            map.get(department.getHoscode()).add(department);
+        }
+    }*/
+
+    //封装为DepartmentVo以便返回
+    //遍历Map,得到Map的entry关系 然后entry.getKey()  entry.getValue()
+    for (Map.Entry<String,List<Department>> entry : departmentMap.entrySet() ){
+        String bigCode = entry.getKey();
+
+        List<Department> departmentList = entry.getValue();
+        
+        //封装大科室
+        DepartmentVo bigDepartmentVo = new DepartmentVo();
+        bigDepartmentVo.setDepcode(bigCode);
+        //大科室的名字是ArrayList中第一个科室
+        bigDepartmentVo.setDepname(departmentList.get(0).getBigname());
+        
+        //封装子科室  子科室没有子科室了
+        List<DepartmentVo> childrenDepartmentVoList = new ArrayList<>();
+        for (Department department : departmentList){
+            DepartmentVo childrenDepartmentVo = new DepartmentVo();
+            childrenDepartmentVo.setDepcode(department.getDepcode());
+            childrenDepartmentVo.setDepname(department.getDepname());
+            //将子科室一个个放入list中
+            childrenDepartmentVoList.add(childrenDepartmentVo);
+        }
+        //将大科室的children属性指向list
+        bigDepartmentVo.setChildren(childrenDepartmentVoList);    
+        //将大科室一个个放入结果list中
+        result.add(bigDepartmentVo);
+    }
+    //返回结果list
+    return result;
+}
+```
+
+# 根据医院和科室编号分页查询排班信息
+
+因为前端点击具体科室时，需要显示出科室具体的排班表，如几月几号周几几点，因为情况众多，需要分页显示
+
+## controller层
+
+传入：当前页码`page`，每页记录数`limit`，医院编号`hoscode`,科室编号`depcode`   
+
+返回：一个Map<String,Object>集合,`scheduleRuleVos`按照workDate工作日期排序的排班信息列表list，`total`总记录数用于分页，`baseMap`存放基础信息，里边包含`hospitalName`医院名称，用于更好的显示前端
+
+```java
+/**根据医院和科室编号分页查询排班信息
+     *
+     * @param page
+     * @param limit
+     * @param hoscode
+     * @param depcode
+     * @return 返回一个Map集合，包含日期、已预约人数、可预约人数等
+     */
+    @ApiOperation(value = "根据医院和科室编号分页查询排班信息")
+    @GetMapping("getScheduleRule/{page}/{limit}/{hoscode}/{depcode}")
+    public Result getScheduleRule(@PathVariable long page,
+                                  @PathVariable long limit,
+                                  @PathVariable String hoscode,
+                                  @PathVariable String depcode){
+        //因为返回值需要包含日期、已预约人数、可预约人数等，所以返回Map集合更方便
+        //根据当前页码、每页记录数、医院编号、科室编号来分页查询排班规则信息
+        Map<String ,Object> scheduleMap = scheduleService.getScheduleRulePageByHoscodeAndDepcode(page,limit,hoscode,depcode);
+        return Result.ok(scheduleMap);
+
+    }
+```
+
+
+
+## service层
+
+使用springData来进行条件分页查询  
+
+1. 使用`Criteria.where`封装条件对象，查询出医院编号和科室编号相同的记录
+2. 使用`Aggregation.newAggregation(`实现分组操作，根据医生工作日期workDate分组
+   1. `Aggregation.match(criteria),`传入封装好的条件
+   2. `Aggregation.group("workDate") `用于分组
+   3. `.first("workDate").as("workDate")`  对分组字段进行显示
+3. 调用`mongoTemplate.aggregate(aggregation, Schedule.class, BookingScheduleRuleVo.class);`方法执行查询，返回`AggregationResults`对象
+4. 调用`aggResult.getMappedResults();`方法从对象中获取List数据
+5. 因为还需要返回总记录数`total`，所以再次分组查询总记录数
+6. 因为list集合中的对象的`workDate`属性需要转为星期以便显示，所以遍历集合并调用自定义方法`this.getDayOfWeek(new DateTime(workDate));`来转为星期并封装
+7. 调用`hospitalService.getHospitalNameByHoscode(hoscode);`获取医院名称
+8. 将医院名称放入baseMap中
+9. 将list集合放入result.scheduleRuleVos中
+10. 将total放入result.total中
+11. 将baseMap放入result.baseMap中
+12. 返回result集合
+
+```java
+/**
+ * 分页查询出排班规则信息
+ * 需要根据日期排序
+ * @param page
+ * @param limit
+ * @param hoscode
+ * @param depcode
+ * @return 返回一个map集合，包括排班信息、日期、预约人数等
+ */
+@Override
+public Map<String, Object> getScheduleRulePageByHoscodeAndDepcode(long page, long limit, String hoscode, String depcode) {
+    //根据医院编号和科室编号查询
+    //MongoTemplate中有一个封装条件对象
+    Criteria criteria = Criteria.where("hoscode").is(hoscode).and("depcode").is(depcode);
+
+    //根据医生workDate分组
+    //实现分组操作,用于聚合操作(注意别引错包） org.springframework.data.mongodb.core.aggregation.Aggregation;
+    Aggregation aggregation = Aggregation.newAggregation(
+        Aggregation.match(criteria),  //传入封装好的条件
+        Aggregation.group("workDate") //分组字段
+        .first("workDate").as("workDate")  //对分组字段进行显示
+        //统级号源数量
+        .count().as("docCount")
+        .sum("reservedNumber").as("reservedNumber")
+        .sum("availableNumber").as("availableNumber"),
+        //排序
+        Aggregation.sort(Sort.Direction.DESC,"workDate"),
+        Aggregation.skip((page-1) * limit),
+        Aggregation.limit(limit)
+    );
+
+    //调用方法 执行查询
+    AggregationResults<BookingScheduleRuleVo> aggResult = mongoTemplate.aggregate(aggregation, Schedule.class, BookingScheduleRuleVo.class);
+    //从对象中获取数据
+    List<BookingScheduleRuleVo> scheduleRuleVos = aggResult.getMappedResults();
+
+    //分组查询总记录数
+    Aggregation totalAgg = Aggregation.newAggregation(
+        Aggregation.match(criteria),  //传入封装好的条件
+        Aggregation.group("workDate") //分组字段
+    );
+    AggregationResults<BookingScheduleRuleVo> totalAggResult = mongoTemplate.aggregate(totalAgg, Schedule.class, BookingScheduleRuleVo.class);
+    int total = totalAggResult.getMappedResults().size();
+
+    //封装星期属性dayOfWeek
+    for (BookingScheduleRuleVo scheduleRuleVo : scheduleRuleVos) {
+        Date workDate = scheduleRuleVo.getWorkDate();
+        //转为星期
+        String dayOfWeek = this.getDayOfWeek(new DateTime(workDate));
+        scheduleRuleVo.setDayOfWeek(dayOfWeek);
+
+    }
+    //设置最终数据，完成返回
+    HashMap<String, Object> result = new HashMap<>();
+    result.put("scheduleRuleVos",scheduleRuleVos);
+    result.put("total",total);
+    //获取医院名称,需要用另一个service的方法
+    String hospitalName = hospitalService.getHospitalNameByHoscode(hoscode);
+
+    //将基础信息放入baseMap
+    HashMap<Object, Object> baseMap = new HashMap<>();
+    baseMap.put("hospitalName",hospitalName);
+    result.put("baseMap",baseMap);
+
+    return result;
+}
+```
+
+# 根据医院编号、科室编号、工作日期查询排班详情
+
+当获得排班信息后，要根据排班的日期查询出具体的医生
+
+## controller
+
+调用`scheduleService`的`getScheduleRuleDetail`方法
+
+```java
+/**
+ * 根据医院编号、科室编号、预约时间来查询详情
+ * @param hoscode
+ * @param depcode
+ * @param workDate
+ * @return 
+ */
+@ApiOperation(value = "根据医院和科室编号、工作日期查询预约详情")
+@GetMapping("getScheduleRuleDetail/{hoscode}/{depcode}/{workDate}")
+public Result getScheduleRuleDetail(@PathVariable String hoscode,
+                                    @PathVariable String depcode,
+                                    @PathVariable String workDate){
+    List<Schedule> list = scheduleService.getScheduleRuleDetail(hoscode,depcode,workDate);
+
+    return Result.ok(list);
+
+}
+```
+
+## service层
+
+```java
+/**
+ * 查询科室排班详情
+ * @param hoscode
+ * @param depcode
+ * @param workDate
+ * @return
+ */
+@Override
+public List<Schedule> getScheduleRuleDetail(String hoscode, String depcode, String workDate) {
+    List<Schedule> list = scheduleRepository.findScheduleByHoscodeAndDepcodeAndWorkDate(hoscode,depcode,new DateTime(workDate).toDate());
+    //封装医院名称、科室名称、日期对应星期
+    list.stream().forEach(item->{
+        this.packageSchedule(item);
+    });
+
+    return list;
+}
+
+private void packageSchedule(Schedule schedule){
+    //医院名称
+    schedule.getParam().put("hosname",hospitalService.getHospitalNameByHoscode(schedule.getHoscode()));
+    //设置科室名称
+    schedule.getParam().put("depname",departmentService.getDepname(schedule.getHoscode(),schedule.getDepcode()));
+    //设置星期
+    schedule.getParam().put("dayOfWeek",this.getDayOfWeek(new DateTime(schedule.getWorkDate())));
 }
 ```
 

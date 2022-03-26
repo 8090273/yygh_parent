@@ -374,3 +374,26 @@ response.data中的key值不对，应该取`hospitalLevel`
 ## 总结
 
 前端知识忘差不多了
+
+# 后端Bug查询排班接口得到的数据不对
+
+## 描述
+
+点击排班按钮请求接口后，发现一个科室一个大科室，数据层级错误
+
+## 原因
+
+后端接口的service层不对，是使用stream流排序时排序字段错误造成的
+
+## 解决
+
+将stream流的写法改为
+
+```java
+Map<String, List<Department>> departmentMap = departmentStream.collect(Collectors.groupingBy(Department::getBigcode));
+
+```
+
+## 总结
+
+还是不能盲目复制粘贴实体类，应该再好好看看实体类

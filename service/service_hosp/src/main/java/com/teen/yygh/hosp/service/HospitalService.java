@@ -21,4 +21,6 @@ public interface HospitalService {
     void updateStatus(String id, Integer status);
 
     HashMap<String,Object> getHospitalById(String id);
+
+    String getHospitalNameByHoscode(String hoscode);
 }

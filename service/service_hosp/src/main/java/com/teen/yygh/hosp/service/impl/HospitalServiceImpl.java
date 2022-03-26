@@ -13,7 +13,6 @@ import org.springframework.stereotype.Service;
 
 import java.util.Date;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -142,6 +141,20 @@ public class HospitalServiceImpl implements HospitalService {
         //因为不需要重复返回，所以把实体中的属性清空
         hospital.setBookingRule(null);
         return map;
+    }
+
+    /**
+     * 通过hoscode获取医院名称
+     * @param hoscode
+     * @return
+     */
+    @Override
+    public String getHospitalNameByHoscode(String hoscode) {
+        Hospital hospital = this.getByHoscode(hoscode);
+        if (null != hospital){
+            return hospital.getHosname();
+        }
+        return null;
     }
 
     /**
