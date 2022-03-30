@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.Date;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -144,6 +145,18 @@ public class HospitalServiceImpl implements HospitalService {
     }
 
     /**
+     * 根据医院编号获取医院的预约详情
+     * @param hoscode
+     * @return
+     */
+    @Override
+    public Map<String, Object> findBookingRuleDetailByHoscode(String hoscode) {
+        //相当于对getHospitalById做一个再封装
+        HashMap<String, Object> hospitalById = this.getHospitalById(this.getByHoscode(hoscode).getId());
+        return hospitalById;
+    }
+
+    /**
      * 通过hoscode获取医院名称
      * @param hoscode
      * @return
@@ -156,6 +169,19 @@ public class HospitalServiceImpl implements HospitalService {
         }
         return null;
     }
+
+    /**
+     * 模糊查询，根据医院名称
+     * @param hosname
+     * @return
+     */
+    @Override
+    public List<Hospital> findByHosname(String hosname) {
+
+        return hospitalRepository.findHospitalByHosnameLike(hosname);
+    }
+
+
 
     /**
      * 通过远程调用数据字典获取医院详情

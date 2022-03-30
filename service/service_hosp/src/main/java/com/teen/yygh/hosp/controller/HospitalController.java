@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.*;
 @Api(tags = "医院管理")
 @RestController
 @RequestMapping("/admin/hosp/hospital")
-@CrossOrigin
+//@CrossOrigin
 public class HospitalController {
     @Autowired
     private HospitalService hospitalService;

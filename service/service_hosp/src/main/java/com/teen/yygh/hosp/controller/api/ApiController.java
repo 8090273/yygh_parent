@@ -36,7 +36,7 @@ import java.util.Map;
 @Api(tags = "医院信息接口，负责提供上传信息")
 @RestController
 @RequestMapping("/api/hosp")
-@CrossOrigin //跨域资源共享开启，允许跨域访问
+//@CrossOrigin //跨域资源共享开启，允许跨域访问
 public class ApiController {
     @Autowired
     private HospitalService hospitalService;

@@ -5,6 +5,7 @@ import com.teen.yygh.vo.hosp.HospitalQueryVo;
 import org.springframework.data.domain.Page;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -23,4 +24,8 @@ public interface HospitalService {
     HashMap<String,Object> getHospitalById(String id);
 
     String getHospitalNameByHoscode(String hoscode);
+
+    List<Hospital> findByHosname(String hosname);
+
+    Map<String, Object> findBookingRuleDetailByHoscode(String hoscode);
 }

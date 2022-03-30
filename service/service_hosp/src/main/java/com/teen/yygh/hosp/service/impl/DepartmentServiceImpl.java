@@ -99,6 +99,7 @@ public class DepartmentServiceImpl implements DepartmentService {
 
     /**
      * 根据hoscode查询此医院下所有科室
+     * 难点
      * @param hoscode
      * @return
      */

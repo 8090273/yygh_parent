@@ -448,7 +448,33 @@ public class RedisConfig {
 
 ### @Cacehable
 
-当第一次查询数据库后，将数据添加到缓存中，第二次查询数据库时可以直接走缓存，不必再走数据库
+当第一次查询数据库后，将数据添加到缓存中，第二次查询数据库时可以直接走缓存，不必再走数据库  
+
+***注意！！！如果在本类中调用此注解标记的方法，并不会走缓存！！！***
+
+#### 不调用的原因
+
+为什么缓存没有被正常创建？？
+因为@Cacheable 是使用AOP 代理实现的 ，通过创建内部类来代理缓存方法，这样就会导致一个问题，类内部的方法调用类内部的缓存方法不会走代理，不会走代理，就不能正常创建缓存，所以每次都需要去调用数据库。
+
+@Cacheable 的一些注意点
+1、因为@Cacheable 由AOP 实现，所以，如果该方法被其它注解切入，当缓存命中的时候，则其它注解不能正常切入并执行，@Before 也不行，当缓存没有命中的时候，其它注解可以正常工作  
+
+2、@Cacheable 方法不能进行内部调用，否则缓存无法创建  
+
+@Cacheable标注的方法，如果其所在的类实现了某一个接口，那么该方法也必须出现在接口里面，否则cache无效。  
+
+具体的原因是， Spring把实现类装载成为Bean的时候，会用代理包装一下，所以从Spring Bean的角度看，只有接口里面的方法是可见的，其它的都隐藏了，自然课看不到实现类里面的非接口方法，@Cacheable不起作用。  
+
+解决办法：把待cache的方法移到接口里面。  
+
+
+另外衍生两个小问题：
+1. @Cacheable放接口里面可以吗？答案是：不行。
+2. 如果某一个Bean并没有实现任何接口，@Cacheable标注的方法有什么要求？
+   答案是public即可。这种Bean也被Spring产生了代理， 看得到的只有public方法。
+
+本质是Spring代理的问题，很多的基础设施可能都会遇到类似的问题。比如安全，事务，日志等等。
 
 ### @CachePut
 
@@ -1516,4 +1542,119 @@ private void packageSchedule(Schedule schedule){
     schedule.getParam().put("dayOfWeek",this.getDayOfWeek(new DateTime(schedule.getWorkDate())));
 }
 ```
+
+# 整合Gateway网关
+
+gateway网关可以实现负载均衡、请求转发、反向代理等
+
+## 新建模块
+
+新建 service_gateway模块
+
+## 添加依赖
+
+添加
+
+```xml
+<dependencies>
+    <dependency>
+        <groupId>com.teen</groupId>
+        <artifactId>common_util</artifactId>
+        <version>1.0</version>
+    </dependency>
+
+    <dependency>
+        <groupId>org.springframework.cloud</groupId>
+        <artifactId>spring-cloud-starter-gateway</artifactId>
+    </dependency>
+
+    <!-- 服务注册 -->
+    <dependency>
+        <groupId>com.alibaba.cloud</groupId>
+        <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
+    </dependency>
+</dependencies>
+```
+
+## 添加配置文件
+
+```yaml
+server:
+  port: 80
+
+spring:
+  application:
+    name: service-gateway
+  cloud:
+    nacos:
+      discovery:
+        server-addr: 127.0.0.1:8848
+    # 使用服务发现路由
+    gateway:
+      discovery:
+        locator:
+          enabled: true
+      routes[0]:
+       id: service-hosp
+       uri: lb://service-hosp
+       predicates: Path=/*/hosp/**
+
+      routes[1]:
+       id: service-dict
+       uri: lb://service-dict
+       predicates: Path=/*/dict/**
+```
+
+## 添加主启动类
+
+```java
+@SpringBootApplication
+public class ServerGatewayApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(ServerGatewayApplication.class,args);
+    }
+}
+```
+
+# 网关处理跨域问题
+
+注意，要注释掉所有的@CrossOrigin
+
+## 新建配置类
+
+```java
+@Configuration
+public class CorsConfig {
+    @Bean
+    public CorsWebFilter corsFilter() {
+        CorsConfiguration config = new CorsConfiguration();
+        config.addAllowedMethod("*");
+        config.addAllowedOrigin("*");
+        config.addAllowedHeader("*");
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource(new PathPatternParser());
+        source.registerCorsConfiguration("/**", config);
+
+        return new CorsWebFilter(source);
+    }
+}
+```
+
+# 开始前端！！！
+
+使用前端框架nuxt
+
+# Nuxt服务端渲染技术
+
+服务端渲染技术又称SSR，是在服务端渲染完成页码内容，不需要通过Ajax获取数据  
+
+SSR的优势在于：更好的SEO，更容易让网络爬虫（搜索引擎）发现自己的内容，爬虫可以查看到完全渲染的页面  
+
+使用服务端渲染，我们可以获得更快的内容到达时间，无需等待所有的JS都完成下载并执行，产生更好的用户体验。**对于内容到达时间与转化率直接相关的应用，SSR至关重要**
+
+## 什么是Nuxt
+
+Nuxt.js是一个基于Vue的轻量级应用框架，可用于创建服务端渲染（SSR）应用，也可以充当静态站点引擎生成静态站点应用  
+
+说白了还是Vue的一个框架  
 

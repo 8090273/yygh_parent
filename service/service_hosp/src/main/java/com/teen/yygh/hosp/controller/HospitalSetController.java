@@ -27,7 +27,7 @@ import java.util.Random;
 @Api(tags = "医院设置管理")
 @RestController
 @RequestMapping("admin/hosp/hospitalSet")
-@CrossOrigin //跨域资源共享开启，允许跨域访问
+//@CrossOrigin //跨域资源共享开启，允许跨域访问
 public class HospitalSetController {
     @Autowired
     private HospitalSetService hospitalSetService;

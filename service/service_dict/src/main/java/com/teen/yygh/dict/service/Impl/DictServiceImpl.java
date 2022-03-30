@@ -38,7 +38,7 @@ public class DictServiceImpl extends ServiceImpl<DictMapper, Dict> implements Di
      * @return
      */
     @Override
-    @Cacheable(value = "dict",keyGenerator="keyGenerator")
+    @Cacheable(value = "dict",keyGenerator="keyGenerator")  //在此类中调用此方法，不会走缓存，必须其他类调用此方法
     public List<Dict> getChildData(Long id) {
         QueryWrapper wrapper = new QueryWrapper();
         wrapper.eq("parent_id",id);
@@ -47,7 +47,7 @@ public class DictServiceImpl extends ServiceImpl<DictMapper, Dict> implements Di
         for (Dict dict: list) {
             dict.setHasChildren(hasChild(dict.getId()));
         }
-        System.out.println("查询了数据库！");
+        System.out.println("未使用redis，直接查询了数据库！值为："+id);
         return list;
     }
 
@@ -156,6 +156,7 @@ public class DictServiceImpl extends ServiceImpl<DictMapper, Dict> implements Di
     public List<Dict> findChildByDictCode(String dictCode) {
         Dict codeDict = this.getDictByDictCode(dictCode);
         if(null == codeDict) return null;
+        //在这里调用此类的getChildData不会调用redis缓存！
         return this.getChildData(codeDict.getId());
     }
 
