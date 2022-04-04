@@ -9,7 +9,7 @@
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
-    <artifactId>service_user</artifactId>
+    <artifactId>service_oss</artifactId>
 
     <properties>
         <maven.compiler.source>8</maven.compiler.source>
@@ -17,17 +17,18 @@
     </properties>
 
     <dependencies>
+        <!-- 阿里云oss依赖 -->
         <dependency>
-            <groupId>com.teen</groupId>
-            <artifactId>service_dict_client</artifactId>
-            <version>0.0.1-SNAPSHOT</version>
+            <groupId>com.aliyun.oss</groupId>
+            <artifactId>aliyun-sdk-oss</artifactId>
         </dependency>
-<!--        用到远程调用获取dict服务的数据，引入client-->
+
+        <!-- 日期工具栏依赖 -->
         <dependency>
-            <groupId>com.teen</groupId>
-            <artifactId>service_dict_client</artifactId>
-            <version>0.0.1-SNAPSHOT</version>
+            <groupId>joda-time</groupId>
+            <artifactId>joda-time</artifactId>
         </dependency>
     </dependencies>
+
 
 </project>

@@ -41,8 +41,8 @@ public class MsmApiController {
         if (code.equals("")){
             return Result.fail().message("验证码发送失败");
         }
-        //把验证码放入redis中，key：手机号 value：验证码  过期时间5 单位：分钟
-        redisTemplate.opsForValue().set(phone,code,5, TimeUnit.MINUTES);
+        //把验证码放入redis中，key：手机号 value：验证码  过期时间5 单位：分钟  暂时改成5天
+        redisTemplate.opsForValue().set(phone,code,5, TimeUnit.DAYS);
         System.out.println("发送成功，验证码是："+code);
         return Result.ok();
     }

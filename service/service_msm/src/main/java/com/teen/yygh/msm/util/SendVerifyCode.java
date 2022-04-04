@@ -37,13 +37,9 @@ public class SendVerifyCode implements InitializingBean {
 
 
     public static String sendSixCode(String phone){
-//        String host = "https://miitangs09.market.alicloudapi.com";
         String host = HOST;
-//        String path = "/v1/tools/sms/code/sender";
         String path = PATH;
-//        String method = "POST";
         String method = METHOD;
-//        String appcode = "556af59039b148d1acf655937417a456";
         String appcode = APPCODE;
         Map<String, String> headers = new HashMap<>();
         //最后在header中的格式(中间是英文空格)为Authorization:APPCODE 83359fd73fe94948385f570e3c139105
