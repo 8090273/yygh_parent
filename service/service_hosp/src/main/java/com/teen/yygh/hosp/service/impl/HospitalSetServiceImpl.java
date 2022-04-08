@@ -8,6 +8,7 @@ import com.teen.yygh.model.hosp.HospitalSet;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.teen.yygh.hosp.mapper.HospitalSetMapper;
 import com.teen.yygh.hosp.service.HospitalSetService;
+import com.teen.yygh.vo.order.SignInfoVo;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -49,5 +50,25 @@ public class HospitalSetServiceImpl extends ServiceImpl<HospitalSetMapper, Hospi
         if (!HttpRequestHelper.isSignEquals(paramMap,hospSetSign)){
             throw new YyghException(ResultCodeEnum.SIGN_ERROR);
         }
+    }
+
+    /**
+     * 获取医院签名
+     * @param hoscode
+     * @return
+     */
+    @Override
+    public SignInfoVo getSignInfoVo(String hoscode) {
+        QueryWrapper wrapper = new QueryWrapper();
+        wrapper.eq("hoscode",hoscode);
+        HospitalSet hospitalSet = this.getOne(wrapper);
+        if (null == hospitalSet){
+            //医院暂未开通
+            throw new YyghException(ResultCodeEnum.HOSPITAL_OPEN);
+        }
+        SignInfoVo signInfoVo = new SignInfoVo();
+        signInfoVo.setApiUrl(hospitalSet.getApiUrl());
+        signInfoVo.setSignKey(hospitalSet.getSignKey());
+        return signInfoVo;
     }
 }

@@ -25,4 +25,6 @@ public interface UserInfoService extends IService<UserInfo>{
     void lock(String id, Integer status);
 
     Map<String, Object> show(Long id);
+
+    void logoutByUserId(Long userId);
 }

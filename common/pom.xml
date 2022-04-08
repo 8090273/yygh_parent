@@ -14,6 +14,8 @@
     <modules>
         <module>common_util</module>
         <module>service_util</module>
+        <module>rocketMq_util</module>
+        <module>rabbitMq_util</module>
     </modules>
 
     <properties>

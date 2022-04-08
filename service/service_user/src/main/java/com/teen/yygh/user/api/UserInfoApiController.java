@@ -33,6 +33,15 @@ public class UserInfoApiController {
         return Result.ok(info);
     }
 
+    //退出登录 根据手机号
+    @ApiOperation(value = "根据token退出登录")
+    @GetMapping("logout")
+    public Result logout(HttpServletRequest request){
+        Long userId = AuthContextHolder.getUserId(request);
+        userInfoService.logoutByUserId(userId);
+        return Result.ok();
+    }
+
     //用户认证
     @ApiOperation( value = "用户实名认证接口")
     @PostMapping("auth/userAuth")
@@ -46,6 +55,7 @@ public class UserInfoApiController {
     @ApiOperation(value = "根据用户id获取用户信息")
     @GetMapping("auth/getUserInfo")
     public Result getUserInfo(HttpServletRequest request){
+
         Long userId = AuthContextHolder.getUserId(request);
         UserInfo userInfo = userInfoService.getById(userId);
         return Result.ok(userInfo);

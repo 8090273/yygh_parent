@@ -488,7 +488,11 @@ public class RedisConfig {
 
 url:  192.168.118.144:6379  
 
-root:  /usr/local/redis  
+root:  /usr/local/redis/redis-6.2.6/src  
+
+命令：./redis-server  
+
+设置密码：客户端中 `config set requirepass root`
 
 密码：root  
 
@@ -1676,3 +1680,626 @@ Nuxt.js是一个基于Vue的轻量级应用框架，可用于创建服务端渲�
 
 # 阿里云OSS
 
+# 预约挂号模块
+
+# 获取排班中可预约的日期数据
+
+是一个分页查询，根据预约周期，展示可预约日期数据，按分页展示  
+
+选择日期即可展示当天可预约的列表
+
+## controller层
+
+接口地址：auth/getBookingScheduleRule/{page}/{limit}/{hoscode}/{depcode} 
+
+传入当前页码、每页记录数、医院编号、科室编号  
+
+查询出可预约的排班数据   
+
+```java
+@Autowired
+private ScheduleService scheduleService;
+@ApiOperation(value = "获取可预约排班数据")
+@GetMapping("auth/getBookingScheduleRule/{page}/{limit}/{hoscode}/{depcode}")
+public Result getBookingSchedule(
+        @ApiParam(name = "page", value = "当前页码", required = true)
+        @PathVariable Integer page,
+        @ApiParam(name = "limit", value = "每页记录数", required = true)
+        @PathVariable Integer limit,
+        @ApiParam(name = "hoscode", value = "医院code", required = true)
+        @PathVariable String hoscode,
+        @ApiParam(name = "depcode", value = "科室code", required = true)
+        @PathVariable String depcode) {
+    return Result.ok(scheduleService.getBookingScheduleRule(page, limit, hoscode, depcode));
+}
+
+```
+
+
+
+## service层
+
+### getDateTime方法
+
+将一个格式化后的日期转换为DateTime类型  
+
+私有  
+
+传入一个日期，这里传入的是当前系统时间，传入一个字符串时间，格式必须为（HH:mm）08:30   
+
+输出一个DateTime类型对象
+
+```java
+/**
+ * 将Date日期(yyyy-MM-dd HH:mm)转换为DateTime
+ * @param date
+ * @param timeString
+ * @return
+ */
+private DateTime getDateTiem(Date date, String timeString) {
+    //当前系统日期+放号时间点
+    String dateTimeString = new DateTime(date).toString("yyyy-MM-dd") + " " + timeString;
+    //将yyyy-MM-dd HH:mm 转换为DateTime类型
+    DateTime dateTime = DateTimeFormat.forPattern("yyyy-MM-dd HH:mm").parseDateTime(dateTimeString);
+    return dateTime;
+}
+```
+
+### getListDate方法
+
+**获取可预约日期的分页数据**  
+
+分页查询  
+
+传入当前页码page、每页记录数limit、预约规则bookingRule  
+
+返回mybatis-plus分页对象IPage，其中装载可预约的日期  
+
+1. 获取当天放号时间
+2. 得到预约规则中的预约周期，即用户可预约的天数（10）
+3. 判断是否已过放号时间，若已过，则周期要+1
+4. 准备一个list放入预约日期
+5. 计算当前的预约日期，for循环预约周期，将每天的预约时间都显示出来并加入list中
+6. 准备一个list放入分页日期
+7. 找出具体的开始记录和结束记录的下标start、end
+8. end要判断是否越界，如果end越界，需要将end指向数组尾部
+9. for循环遍历预约日期，从start到end的日期，并放入pageDateList中
+10. new一个Page对象，传入(当前页码,7,预约日期总数) 7是因为前端一行最大显示7个
+11. 设置Records为pageDateList
+12. 返回分页对象
+
+```java
+/**
+     * 获取可预约日期的分页数据
+     * 根据bookingRule预约规则
+     * 分页查询
+     * @param page
+     * @param limit
+     * @param bookingRule 预约规则
+     * @return 返回mybatis-plus分页对象,其中装载Date类型
+     */
+private IPage<Date> getListDate(Integer page, Integer limit, BookingRule bookingRule) {
+    //获取当天放号时间
+    DateTime releaseTime = this.getDateTiem(new Date(),bookingRule.getReleaseTime());
+
+    //预约周期 (10)
+    Integer cycle = bookingRule.getCycle();
+    //如果当天放号时间已过，则预约周期后一天即为即将放号时间，当然，周期要+1
+    if (releaseTime.isBeforeNow())
+        cycle += 1;
+    List<Date> dateList = new ArrayList<>();
+    for (int i = 0;i < cycle;i++){
+        //计算当前预约日期 将每天日期都显示出来（交给前端也行吧）
+        DateTime curDateTime = new DateTime().plusDays(i);
+        String dateString = curDateTime.toString("yyyy-MM-dd");
+        dateList.add(new DateTime(dateString).toDate());
+    }
+    //日期分页，由于预约周期不一样，页面一排最大显示7天。多了要分页
+    List<Date> pageDateList = new ArrayList<>();
+    //找出具体的开始记录和结束记录
+    int start = (page-1)*limit;
+    int end = (page-1)*limit+limit;
+    //如果不够，结束记录指向最后一个元素，即列表长度
+    if (end > dateList.size())
+        end = dateList.size();
+    for (int i = start; i < end; i++) {
+        pageDateList.add(dateList.get(i));
+    }
+    IPage<Date> iPage = new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(page,7,dateList.size());
+    iPage.setRecords(pageDateList);
+    return iPage;
+}
+```
+
+### getBookingScheduleRule方法（核心）
+
+获取排班中可预约的日期数据  
+
+分页查询、根据医院编号和科室编号  
+
+传入页码page、每页记录数limit、医院编号hoscode、科室编号depcode  
+
+返回带有详细信息的Map集合，存放可预约的日期数据  
+
+1. 准备一个Map集合用于存放结果
+
+2. 通过医院编码查询数据库获得医院详细信息
+
+3. 如果没有查到则报错
+
+4. 从医院实体中获得医院的预约规则
+
+5. 通过医院预约规则调用`getListDate`方法获得可预约日期的分页数据，返回的是IPage对象
+
+6. 调用`getRecords()`方法得到当前可预约的日期
+
+7. 接下来开始获取可预约日期的科室预约规则
+
+   1. 因为要使用`mongoTemplate`，所以先构造查询条件对象`Criteria`，根据医院编号、科室编号、工作日期范围做where条件
+
+   2. 设置分组构造器`Aggregation`，注入查询条件，根据工作日期分组，统计总记录数、分组剩余预约数、分组最大预约数
+
+   3. 使用`mongoTemplate`进行查询，获得封装过的查询类对象`AggregationResults`,传入分组构造器实例、应查询的表（文档）、返回的数据类型
+
+   4. 使用`getMappedResults()`方法从查询类对象中得到对象列表List
+
+   5. 获取科室的剩余预约规则
+
+      1. 先将list集合转为map集合，以对象的预约时间为key，这样方便根据dateList中的应预约时间遍历查询对象
+
+      2. 使用stream流的方式转换`scheduleVoMap = scheduleRuleVoList.stream().collect(Collectors.toMap(BookingScheduleRuleVo::getWorkDate,BookingScheduleRuleVo -> BookingScheduleRuleVo));`    
+
+         key：每个对象的工作时间`workDate`  
+
+         value：每个对象本身
+
+      3. for循环遍历dateList
+
+      4. 从日期列表中获得排班日期作为key
+
+      5. 通过key获取当天的科室预约规则，不一定获取的到
+
+      6. 如果获取不到则说明当天没有排班医生，为了防止空指针，初始化空对象，设置就诊人数为0、就诊医生为0
+
+      7. 设置此对象的工作日期，值为date（key）
+
+      8. 计算当前日期为周几并设置
+
+      9. 最后一页的最后一条数据状态设置为即将放号（1），其余设置为正常（0）
+
+      10. 如果当天的预约（第一条）超过了停号日期，设置为不能预约(-1)  
+
+          得到此医院中预约规则的停号时间，判断系统时间是否超过停号时间`.isBeforeNow()`
+
+      11. 将科室的可预约规则详情放入list结果中
+
+6. 封装结果数据
+
+      1. 将可预约日期列表放入result的`bookingScheduleList`中
+      2. 总记录数放入result的`total`中
+      3. 其他基础数据放入baseMap中
+      4. 医院名称放入baseMap的`hosname`，通过hoscode查询
+      5. 查询出科室详情，通过hoscode、depcode查询
+      6. 大科室名称（上级科室）放入baseMap的`bigname`中
+      7. 科室名称放入baseMap的`depname`中
+      8. 系统时间（年月）放入baseMap的`workDateString`中
+      9. 放号时间放入baseMap的`releaseTime`中，通过bookingRule获取
+      10. 停号时间放入baseMap的`stopTime`中
+      11. baseMap放入result的`baseMap`中
+
+8. 将结果返回
+
+```java
+/**
+     * 获取排班可预约的日期数据
+     * 根据医院编号hoscode和科室编号depcode
+     * 分页查询
+     * @param page 页码
+     * @param limit 每页记录数
+     * @param hoscode 医院编号
+     * @param depcode 科室编号
+     * @return 带有详细信息的map集合
+     */
+    @Override
+    public Map<String, Object> getBookingScheduleRule(Integer page, Integer limit, String hoscode, String depcode) {
+        //用于装载结果
+        Map<String, Object> result = new HashMap<>();
+        //获取医院的详细信息（看来回头要花些时间看看数据库字段和实体字段）
+        Hospital hospital = hospitalService.getByHoscode(hoscode);
+        //如果没有数据，则报错
+        if (null == hospital){
+            //数据异常
+            throw new YyghException(ResultCodeEnum.DATA_ERROR);
+        }
+        //从查询出来的医院中获得预约规则
+        BookingRule bookingRule = hospital.getBookingRule();
+        //获取可预约日期的分页对象
+        IPage iPage = this.getListDate(page,limit,bookingRule);
+        //从分页对象中获取当前页可预约的日期
+        List<Date> dateList = iPage.getRecords();
+        //获取可预约日期科室剩余预约数
+        //创建条件构造器 根据医院编号、科室编号、工作日期作为where查询
+        Criteria criteria = Criteria.where("hoscode").is(hoscode).and("depcode").is(depcode)
+                .and("workDate").in(dateList);
+        //分组构造器 传入条件构造器
+        Aggregation agg = Aggregation.newAggregation(
+                Aggregation.match(criteria),
+                Aggregation.group("workDate") //根据工作日期分组
+                    .first("workDate").as("workDate")
+                    .count().as("docCount")     //统计总记录数
+                    .sum("availableNumber").as("availableNumber")  //将每个医生的剩余预约数相加即为总剩余预约数
+                    .sum("reservedNumber").as("reservedNumber")     //将每个医生的最大预约数相加即为总预约数
+        );
+        //使用mongoTemplate进行查询，获得封装过的查询类对象                                                这个参数是干什么的？？？
+        AggregationResults<BookingScheduleRuleVo> aggregationResults = mongoTemplate.aggregate(agg, Schedule.class, BookingScheduleRuleVo.class);
+        //从查询类对象中得到对象列表
+        List<BookingScheduleRuleVo> scheduleRuleVoList = aggregationResults.getMappedResults();
+        //获取科室剩余预约数
+        //转为Map，合并数据，将数据ScheduleVo根据“安排日期”合并到BookingRuleVo中
+        Map<Date, BookingScheduleRuleVo> scheduleVoMap = new HashMap<>();
+        //如果查询到的对象列表不为空
+        if (!CollectionUtils.isEmpty(scheduleRuleVoList)){
+            //将list转为Map，方便根据日期查询医生                                        参数：key 是预约规则中的日期（不一定对应日期列表dateList）     value 是自身预约规则
+            scheduleVoMap = scheduleRuleVoList.stream().collect(Collectors.toMap(BookingScheduleRuleVo::getWorkDate,BookingScheduleRuleVo -> BookingScheduleRuleVo));
+        }
+        //获取可预约的排班规则
+        //新建List集合用于存放预约规则
+        List<BookingScheduleRuleVo> bookingScheduleRuleVoList = new ArrayList<>();
+        //封装具体对象
+        for (int i = 0; i < dateList.size(); i++) {
+            //从日期列表中获得排班日期作为key
+            Date date = dateList.get(i);
+            //通过key来获取科室预约规则，不一定获取的到
+            BookingScheduleRuleVo bookingScheduleRuleVo = scheduleVoMap.get(date);
+            //如果没有获取到，说明当天没有排班医生
+            if (null == bookingScheduleRuleVo){
+                //防止空指针，新建初始数据
+                bookingScheduleRuleVo = new BookingScheduleRuleVo();
+                //就诊医生人数设为0
+                bookingScheduleRuleVo.setDocCount(0);
+                //科室剩余预约数设置为-1（无号）
+                bookingScheduleRuleVo.setAvailableNumber(-1);
+            }
+            //设置此对象的工作日期为key
+            bookingScheduleRuleVo.setWorkDate(date);
+            bookingScheduleRuleVo.setWorkDateMd(date); //MM-dd 为的是方便前端显示
+            //计算一下当前预约日期为周几
+            String dayOfWeek = this.getDayOfWeek(new DateTime(date));
+            //设置星期
+            bookingScheduleRuleVo.setDayOfWeek(dayOfWeek);
+            //最后一页的最后一条记录即为即将预约 状态 0：正常 1：即将放号 -1：当天已停止放号
+            if (i == dateList.size()-1 && iPage.getPages()==page){
+                bookingScheduleRuleVo.setStatus(1);
+            }else {
+                bookingScheduleRuleVo.setStatus(0);
+            }
+            //当天预约(第一条)如果过了停号时间 不能预约
+            if (i == 0 && page == 1){
+                //得到此医院预约规则中的停号时间
+                DateTime stopTime = this.getDateTiem(new Date(),bookingRule.getStopTime());
+                //如果停号时间比现在早（现在过了停号时间了）
+                if (stopTime.isBeforeNow()){
+                    //设置状态为停止预约
+                    bookingScheduleRuleVo.setStatus(-1);
+                }
+            }
+            //将科室可预约规则存入结果list中
+            bookingScheduleRuleVoList.add(bookingScheduleRuleVo);
+        }
+
+        //开始封装结果数据
+        //放入可预约日期规则数据
+        result.put("bookingScheduleList",bookingScheduleRuleVoList);
+        //总记录数（2）
+        result.put("total",iPage.getTotal());
+        //其他基础数据使用map封装并装入 baseMap
+        Map<String,String> baseMap = new HashMap<>();
+        //医院名称，通过hoscode查询
+        baseMap.put("hosname",hospitalService.getHospitalNameByHoscode(hoscode));
+        //根据医院编号和科室编号查询科室
+        Department department = departmentService.getDepartment(hoscode,depcode);
+        //开始封装baseMap
+        //大科室名称
+        baseMap.put("bigname",department.getBigname());
+        //科室名称
+        baseMap.put("depname",department.getDepname());
+        //系统时间 年月
+        baseMap.put("workDateString",new DateTime().toString("yyyy年MM月"));
+        //放号时间
+        baseMap.put("releaseTime",bookingRule.getReleaseTime());
+        //停号时间
+        baseMap.put("stopTime",bookingRule.getStopTime());
+        //将baseMap放入结果集
+        result.put("baseMap",baseMap);
+        return result;
+    }
+```
+
+# 订单模块
+
+新建模块service_order
+
+# 生成订单接口
+
+`controller.api.OrderApiController`  
+
+`submitOrder(scheduleId,patientId)`
+
+## controller层
+
+接口地址：`api/order/orderInfo/auth/submitOrder/{scheduleId}/{patientId}`  
+
+返回排班订单对象
+
+```java
+@ApiOperation(value = "生成订单")
+@PostMapping("auth/submitOrder/{scheduleId}/{patientId}")
+public Result submitOrder( @ApiParam(name = "scheduleId", value = "排班id", required = true)
+                           @PathVariable String scheduleId,
+                           @ApiParam(name = "patientId", value = "就诊人id", required = true)
+                           @PathVariable Long patientId){
+    return Result.ok(orderService.saveOrder(scheduleId,patientId));
+}
+```
+
+## service层
+
+需要远程调用接口，搭配openFeign   
+
+service层生成订单方法`saveOrder(scheduleId,patientId)`  
+
+传入：预约科室编号scheduleId、就诊人id patientId  
+
+进行保存订单  
+
+返回订单id  
+
+### 详细流程
+
+1. 获取就诊人信息
+2. 获取排班信息
+3. 判断当前时间是否在可预约时间内，不在则抛异常
+4. 获取签名信息，用于调用医院方接口
+5. 判断可预约数，小于等于0则抛异常
+6. 将数据封装并持久化到数据库订单表中-save order start-（听弹幕说最好加redis锁）
+7. 新建空的订单对象，开始封装表单对象 -set orderInfo start-
+8. 将scheduleOrderVo数据复制到orderInfo中，使用`BeanUtils.copyProperties(scheduleOrderVo,orderInfo);`
+9. 上述方法复制不全，需要手动补全其他参数
+10. 生成订单交易号 当前时间戳+随机数
+11. 设置其他参数，如：就诊人id、用户id、就诊人姓名、就诊人手机号、预约编号
+12. 更改订单状态为：预约成功，等待支付
+13. 保存订单到数据库 -save order end-
+14. **调用医院的接口实现预约挂号操作** -use hosp start-
+15. 因为要调用医院接口，先要得到医院方签名，并封装请求体
+16. 将必要参数设置入paramMap中 - set paramMap start -
+17. 包括用于编号、科室编号、医院预约编号、安排日期、医事服务费、就诊人名字、证件类型、证件编号、性别、生日、手机号、是否结婚、省、市、区、联系人名称、联系人证件类型证件号、设置时间戳
+18. 调用`HttpRequestHelper.getSign`方法获取签名，此方法将map集合转为TreeMap并遍历，将value相拼接并拼接时间戳和签名，进行md5加密
+19. 将签名设置入paramMap -set paramMap end-
+20. 请求医院系统接口获得json数据。调用`HttpRequestHelper.sendRequest`方法，传入param和医院路径
+21. 返回的`JSONObject`对象的`result.getInteger("code")`方法获得响应码，如果为200则继续封装orderInfo对象
+22. 从result中得到json字符串
+23. 包括用于记录唯一标识（医院预约记录主键）、预约序号、取号时间、取号地址
+24. 将参数设置入orderInfo表单对象中 -set orderInfo end-
+25. 调用`updateById`更新订单 
+26. 得到排班可预约数、剩余预约数，并发送mq信息更新号源和短信通知
+27. 返回订单id
+
+# 整合RocketMq
+
+看博客有点难度，先整合RabbitMQ
+
+# 整合RabbitMQ
+
+## docker安装
+
+```bash
+docker pull rabbitmq:management
+docker run -d -p 5672:5672 -p 15672:15672 --name rabbitmq rabbitmq:management
+```
+
+## 导入依赖
+
+```xml
+<dependencies>
+    <!--rabbitmq消息队列-->
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-actuator</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>org.springframework.cloud</groupId>
+        <artifactId>spring-cloud-starter-bus-amqp</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>com.alibaba</groupId>
+        <artifactId>fastjson</artifactId>
+    </dependency>
+</dependencies>
+
+```
+
+## 新建模块
+
+新建rabbitMq_util模块，在common下
+
+## 新建service
+
+```java
+@Service
+public class RabbitMqService {
+
+    @Autowired
+    private RabbitTemplate rabbitTemplate;
+    /**
+     *  发送消息
+     * @param exchange 交换机
+     * @param routingKey 路由键
+     * @param message 消息
+     */
+    public boolean sendMessage(String exchange, String routingKey, Object message) {
+        rabbitTemplate.convertAndSend(exchange, routingKey, message);
+        return true;
+    }
+
+}
+```
+
+## 新建config
+
+```java
+@Configuration
+public class MqConfig {
+
+    /**
+     * 消息转换器
+     * 默认是字符串转换器
+     * @return
+     */
+    @Bean
+    public MessageConverter messageConverter(){
+        return new Jackson2JsonMessageConverter();
+    }
+
+}
+```
+
+# MQ发送短信
+
+## 引入依赖
+
+在短信模块中引入MQ依赖
+
+```xml
+<dependencies>
+    <dependency>
+        <groupId>com.teen</groupId>
+        <artifactId>rabbitMq_util</artifactId>
+        <version>0.0.1-SNAPSHOT</version>
+    </dependency>
+</dependencies>
+```
+
+## 添加配置
+
+在配置文件中添加
+
+```properties
+# rabbitMQ配置
+#rabbitmq地址
+spring.rabbitmq.host=192.168.118.144
+spring.rabbitmq.port=5672
+spring.rabbitmq.username=guest
+spring.rabbitmq.password=guest
+```
+
+## 创建常量类
+
+在rabbitMQ_util模块中创建常量类以便调用
+
+## 封装接口
+
+```java
+public String send(MsmVo msmVo) {
+    // 如果手机号不为空
+    if (!StringUtils.isEmpty(msmVo.getPhone())){
+        String code = (String)msmVo.getParam().get("code");
+        System.out.println("发送了短信！：" + code);
+        return this.getCode(msmVo.getPhone());
+    }
+    return "";
+}
+```
+
+## 封装监听器
+
+新建MsmReceive
+
+```java
+@Component
+public class MsmReceive {
+    @Autowired
+    private MsmService msmService;
+
+    /**
+     * 如果监听到mq中有内容，则进行方法调用
+     * @param msmVo
+     * @param message
+     * @param channel
+     */
+    @RabbitListener(bindings = @QueueBinding(
+            value = @Queue(value = MqConst.QUEUE_MSM_ITEM, durable = "true"),
+            exchange = @Exchange(value = MqConst.EXCHANGE_DIRECT_MSM),
+            key = {MqConst.ROUTING_MSM_ITEM}
+    ))
+    public void send(MsmVo msmVo, Message message, Channel channel) {
+        msmService.send(msmVo);
+    }
+
+}
+```
+
+# MQ更新排班数量
+
+操作模块 service-hosp
+
+## 引入依赖
+
+不赘述
+
+## 添加配置
+
+不赘述
+
+## 实体
+
+已统一引入，该对象放一个短信实体，预约下单成功后，我们发送一条消息，让mq来保证两个消息都发送成功
+
+## service
+
+因为预约后排班信息肯定改变，所以要更新排班信息
+
+## MQ监听器
+
+监听到mq中有内容时调用此方法  
+
+根据传来的OrderMqVo中的排班id获得排班数据，并更新排班的预约数  
+
+更新后发送消息给MQ
+
+```java
+@Component
+public class HospitalReceiver {
+    @Autowired
+    private ScheduleService scheduleService;
+
+    @Autowired
+    private RabbitMqService rabbitService;
+
+    /**
+     * 监听到MQ中有内容则调用方法
+     * 更新预约参数，发送短信
+     * @param orderMqVo
+     * @param message
+     * @param channel
+     * @throws IOException
+     */
+    @RabbitListener(bindings = @QueueBinding(
+            value = @Queue(value = MqConst.QUEUE_ORDER, durable = "true"),
+            exchange = @Exchange(value = MqConst.EXCHANGE_DIRECT_ORDER),
+            key = {MqConst.ROUTING_ORDER}
+    ))
+    public void receiver(OrderMqVo orderMqVo, Message message, Channel channel) throws IOException {
+        //下单成功更新预约数
+        Schedule schedule = scheduleService.getScheduleById(orderMqVo.getScheduleId());
+        schedule.setReservedNumber(orderMqVo.getReservedNumber());
+        schedule.setAvailableNumber(orderMqVo.getAvailableNumber());
+        scheduleService.update(schedule);
+        //发送短信
+        MsmVo msmVo = orderMqVo.getMsmVo();
+        if(null != msmVo) {
+            rabbitService.sendMessage(MqConst.EXCHANGE_DIRECT_MSM, MqConst.ROUTING_MSM_ITEM, msmVo);
+        }
+    }
+
+}
+```

@@ -1,6 +1,9 @@
 package com.teen.yygh.common.util;
 
+import com.teen.yygh.common.exception.YyghException;
 import com.teen.yygh.common.helper.JwtHelper;
+import com.teen.yygh.common.result.ResultCodeEnum;
+import org.springframework.util.StringUtils;
 
 import javax.servlet.http.HttpServletRequest;
 
@@ -14,6 +17,10 @@ public class AuthContextHolder {
     public static Long getUserId(HttpServletRequest request){
         //从header中获取token
         String token = request.getHeader("token");
+        if (StringUtils.isEmpty(token)){
+            System.out.println("token为空！");
+            throw new YyghException(ResultCodeEnum.FETCH_ACCESSTOKEN_FAILD);
+        }
 
         Long userId = JwtHelper.getUserId(token);
 

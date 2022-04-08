@@ -178,6 +178,36 @@ public class UserInfoServiceImpl extends ServiceImpl<UserInfoMapper,UserInfo> im
         return map;
     }
 
+    /**
+     * 根据用户id退出登录
+     * @param userId
+     */
+    @Override
+    public void logoutByUserId(Long userId) {
+        System.out.println("----------------正在退出登录--------------");
+        if (userId ==null){
+            throw new YyghException(ResultCodeEnum.PARAM_ERROR);
+        }
+        UserInfo userInfo = this.getById(userId);
+        if (userInfo == null){
+            throw new YyghException(ResultCodeEnum.PARAM_ERROR);
+        }
+        String phone = userInfo.getPhone();
+        //手机号是否为空
+        if (StringUtils.isEmpty(phone)){
+            throw new YyghException(ResultCodeEnum.PARAM_ERROR);
+        }
+        //从redis中取出验证码
+        String redisCode = redisTemplate.opsForValue().get(phone).toString();
+        System.out.println("redis中的验证码是："+ redisCode);
+        //如果redis中的验证码不为空
+        if (!StringUtils.isEmpty(redisCode)){
+            redisTemplate.delete(phone);
+            System.out.println("清空了redis的验证码！");
+        }
+    }
+
+
     private UserInfo packageUserInfo(UserInfo userInfo) {
         //翻译认证状态编码
         Integer authStatus = userInfo.getAuthStatus();

@@ -2,6 +2,7 @@ package com.teen.yygh.hosp.service;
 
 import com.teen.yygh.model.hosp.HospitalSet;
 import com.baomidou.mybatisplus.extension.service.IService;
+import com.teen.yygh.vo.order.SignInfoVo;
 
 import java.util.Map;
 
@@ -13,4 +14,6 @@ public interface HospitalSetService extends IService<HospitalSet> {
     String getSignKey(String hoscode);
 
     void verificationSign(Map<String, Object> paramMap);
+
+    SignInfoVo getSignInfoVo(String hoscode);
 }

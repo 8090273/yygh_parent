@@ -40,12 +40,15 @@ public class HospitalController {
 	 */
 	@PostMapping("/order/submitOrder")
 	public Result AgreeAccountLendProject(HttpServletRequest request, HttpServletResponse response) {
+		System.out.println("----------收到了下单请求，开始校验签名------------");
 		try {
 			Map<String, Object> paramMap = HttpRequestHelper.switchMap(request.getParameterMap());
 			if(!HttpRequestHelper.isSignEquals(paramMap, apiService.getSignKey())) {
+				System.out.println("-----------签名错误！------------------");
 				throw new YyghException(ResultCodeEnum.SIGN_ERROR);
 			}
 
+			System.out.println("----------签名验证成功！！！-------------");
 			Map<String, Object> resultMap = hospitalService.submitOrder(paramMap);
 			return Result.ok(resultMap);
 		} catch (YyghException e) {

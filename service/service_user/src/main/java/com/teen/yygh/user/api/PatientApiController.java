@@ -5,6 +5,7 @@ import com.teen.yygh.common.util.AuthContextHolder;
 import com.teen.yygh.model.user.Patient;
 import com.teen.yygh.user.service.PatientService;
 import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiOperation;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -59,4 +60,20 @@ public class PatientApiController {
         patientService.removeById(id);
         return Result.ok();
     }
+
+    //根据就诊人id获取就诊人信息
+
+    /**
+     * 根据就诊人id获取就诊人信息
+     * 因为不是给前端提供的接口，而是给其他服务提供的接口，
+     * 所以返回实体Patient，而不是响应实体Result
+     * @param id
+     * @return
+     */
+    @ApiOperation(value = "根据id获取就诊人信息")
+    @GetMapping("inner/get/{id}")
+    public Patient getById(@PathVariable Long id){
+        return patientService.getPatientById(id);
+    }
+
 }

@@ -35,16 +35,22 @@ public class HospitalServiceImpl implements HospitalService {
     @Transactional(rollbackFor = Exception.class)
     @Override
     public Map<String, Object> submitOrder(Map<String, Object> paramMap) {
+        System.out.println("收到的参数为："+paramMap.toString());
         log.info(JSONObject.toJSONString(paramMap));
         String hoscode = (String)paramMap.get("hoscode");
         String depcode = (String)paramMap.get("depcode");
-        String hosScheduleId = (String)paramMap.get("hosScheduleId");
+//        String hosScheduleId = (String)paramMap.get("hosScheduleId");
+        String hosScheduleId = "1";
         String reserveDate = (String)paramMap.get("reserveDate");
         String reserveTime = (String)paramMap.get("reserveTime");
         String amount = (String)paramMap.get("amount");
 
-        Schedule schedule = this.getSchedule(hosScheduleId);
+//        Schedule schedule = this.getSchedule(hosScheduleId);
+        //找到bug了！！！傻逼死了，模拟数据，要改为第一个数据。。。而上边那个id根本就表示mysql数据库的，不可能查到
+        Schedule schedule = this.getSchedule("1L");
+        System.out.println("医院排班id为："+hosScheduleId+"  的排班是：" + schedule);
         if(null == schedule) {
+            System.out.println("------------排班信息为空--------------");
             throw new YyghException(ResultCodeEnum.DATA_ERROR);
         }
 
@@ -95,6 +101,7 @@ public class HospitalServiceImpl implements HospitalService {
             //排班剩余预约数
             resultMap.put("availableNumber", schedule.getAvailableNumber());
         } else {
+            System.out.println("-----------------可预约数不足--------------");
             throw new YyghException(ResultCodeEnum.DATA_ERROR);
         }
         return resultMap;
@@ -107,6 +114,7 @@ public class HospitalServiceImpl implements HospitalService {
 
         OrderInfo orderInfo = orderInfoMapper.selectById(hosRecordId);
         if(null == orderInfo) {
+            System.out.println("---------订单对象为空-------------");
             throw new YyghException(ResultCodeEnum.DATA_ERROR);
         }
         //已支付

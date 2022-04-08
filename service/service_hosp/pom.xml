@@ -33,6 +33,12 @@
             <artifactId>service_dict_client</artifactId>
             <version>0.0.1-SNAPSHOT</version>
         </dependency>
+<!--        引入rabbitMq-->
+        <dependency>
+            <groupId>com.teen</groupId>
+            <artifactId>rabbitMq_util</artifactId>
+            <version>0.0.1-SNAPSHOT</version>
+        </dependency>
     </dependencies>
 
 </project>
