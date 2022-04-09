@@ -16,6 +16,7 @@ import com.teen.yygh.model.order.OrderInfo;
 import com.teen.yygh.model.user.Patient;
 import com.teen.yygh.order.mapper.OrderMapper;
 import com.teen.yygh.order.service.OrderService;
+import com.teen.yygh.order.service.WeixinService;
 import com.teen.yygh.user.client.PatientFeignClient;
 import com.teen.yygh.vo.hosp.ScheduleOrderVo;
 import com.teen.yygh.vo.msm.MsmVo;
@@ -28,6 +29,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import javax.xml.ws.spi.http.HttpHandler;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
@@ -49,6 +51,10 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, OrderInfo> implem
     //调用rabbitMQ发送信息
     @Autowired
     private RabbitMqService rabbitMqService;
+
+    //调用微信支付接口进行退款
+    @Autowired
+    private WeixinService weixinService;
 
     /**
      * 生成订单
@@ -73,7 +79,7 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, OrderInfo> implem
         if(new DateTime(scheduleOrderVo.getStartTime()).isAfterNow()
                 || new DateTime(scheduleOrderVo.getEndTime()).isBeforeNow()) {
             //时间已过
-            throw new YyghException(ResultCodeEnum.TIME_NO);
+//            throw new YyghException(ResultCodeEnum.TIME_NO);
         }
         //获取签名信息
         SignInfoVo signInfoVo = hospitalFeignClient.getSignInfoVo(scheduleOrderVo.getHoscode());
@@ -270,6 +276,69 @@ public class OrderServiceImpl extends ServiceImpl<OrderMapper, OrderInfo> implem
         Patient patient = patientFeignClient.getPatientOrder(orderInfo.getPatientId());
         map.put("patient",patient);
         return map;
+    }
+
+    /**
+     * 取消订单
+     * @param orderId
+     * @return
+     */
+    @Override
+    public Boolean cancelOrder(Long orderId) {
+        OrderInfo orderInfo = this.getById(orderId);
+        // 当前时间大于退号时间，则不能取消预约
+        DateTime quitTime = new DateTime(orderInfo.getQuitTime());
+        if (quitTime.isBeforeNow()){
+            System.out.println("已过退号时间！");
+            throw new YyghException(ResultCodeEnum.CANCEL_ORDER_NO);
+        }
+        SignInfoVo signInfoVo = hospitalFeignClient.getSignInfoVo(orderInfo.getHoscode());
+        if (null == signInfoVo){
+            System.out.println("获取签名失败");
+            throw new YyghException(ResultCodeEnum.PARAM_ERROR);
+        }
+        HashMap<String, Object> reqMap = new HashMap<>();
+        reqMap.put("hoscode",orderInfo.getHoscode());
+        //预约记录唯一标识（医院预约记录主键
+        reqMap.put("hosRecordId",orderInfo.getHosRecordId());
+        reqMap.put("timestamp", HttpRequestHelper.getTimestamp());
+        String sign = HttpRequestHelper.getSign(reqMap, signInfoVo.getSignKey());
+        reqMap.put("sign", sign);
+        JSONObject result = HttpRequestHelper.sendRequest(reqMap, signInfoVo.getApiUrl() + "/order/updateCancelStatus");
+        if (result.getInteger("code") != 200){
+            System.out.println("请求失败");
+            throw new YyghException(result.getString("message"), ResultCodeEnum.FAIL.getCode());
+        }else {
+            //是否已经支付？
+            if (orderInfo.getOrderStatus().intValue() == OrderStatusEnum.PAID.getStatus()){
+                //已支付，进行退款
+                Boolean isRefund = weixinService.refund(orderId);
+                if (!isRefund){
+                    //如果退款失败
+                    System.out.println("orderServiceImpl.cancelOrder:取消订单失败！");
+                    throw new YyghException(ResultCodeEnum.CANCEL_ORDER_FAIL);
+                }
+            }
+            // 未支付或退款成功则直接进行更改订单状态
+            //设置订单状态为 取消预约
+            orderInfo.setOrderStatus(OrderStatusEnum.CANCLE.getStatus());
+            this.updateById(orderInfo);
+            System.out.println("取消预约成功！！！");
+
+            //预约取消后发送mq信息更新预约数 可以与下单成功更新预约数使用相同的mq信息，不设置可预约数与剩余预约数，接受的可预约数-1即可
+            OrderMqVo orderMqVo = new OrderMqVo();
+            //排班信息
+            orderMqVo.setScheduleId(orderInfo.getScheduleId());
+            //短信内容
+            MsmVo msmVo = new MsmVo();
+            //只设置手机号即可
+            msmVo.setPhone(orderInfo.getPatientPhone());
+            orderMqVo.setMsmVo(msmVo);
+            //发送mq消息
+            System.out.println("开始发送取消预约的MQ消息给MQ！！！");
+            rabbitMqService.sendMessage(MqConst.EXCHANGE_DIRECT_ORDER,MqConst.ROUTING_ORDER,orderMqVo);
+        }
+        return true;
     }
 
     /**

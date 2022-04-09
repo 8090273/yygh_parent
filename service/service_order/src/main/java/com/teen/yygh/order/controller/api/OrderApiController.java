@@ -61,10 +61,18 @@ public class OrderApiController {
 
     //获取订单详情
     //根据订单id查询订单详情
+    @ApiOperation(value = "根据订单id查询订单详情")
     @GetMapping("auth/getOrders/{orderId}")
     public Result getOrders(@PathVariable String orderId) {
         OrderInfo orderInfo = orderService.getOrder(orderId);
         return Result.ok(orderInfo);
+    }
+
+    // 取消预约
+    @ApiOperation(value = "取消预约")
+    @GetMapping("auth/cancelOrder/{orderId}")
+    public Result cancelOrder(@ApiParam(name = "orderId",value = "订单id",required = true) @PathVariable("orderId") Long orderId){
+        return Result.ok(orderService.cancelOrder(orderId));
     }
 
 }

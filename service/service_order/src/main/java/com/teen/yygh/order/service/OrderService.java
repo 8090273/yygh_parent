@@ -20,4 +20,6 @@ public interface OrderService extends IService<OrderInfo> {
     OrderInfo getOrder(String orderId);
 
     Map<String,Object> show(Long id);
+
+    Boolean cancelOrder(Long orderId);
 }

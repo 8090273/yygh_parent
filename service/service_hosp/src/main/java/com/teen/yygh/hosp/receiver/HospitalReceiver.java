@@ -44,10 +44,22 @@ public class HospitalReceiver {
             key = {MqConst.ROUTING_ORDER}
     ))
     public void receiver(OrderMqVo orderMqVo, Message message, Channel channel) throws IOException {
-        //下单成功更新预约数
+
         Schedule schedule = scheduleService.getScheduleById(orderMqVo.getScheduleId());
-        schedule.setReservedNumber(orderMqVo.getReservedNumber());
-        schedule.setAvailableNumber(orderMqVo.getAvailableNumber());
+        //如果设置了剩余可预约数
+        if (null != orderMqVo.getAvailableNumber()){
+            //下单成功更新预约数
+            //可预约数
+            schedule.setReservedNumber(orderMqVo.getReservedNumber());
+            //剩余预约数
+            schedule.setAvailableNumber(orderMqVo.getAvailableNumber());
+        }else {
+            //没设置剩余可预约数则是取消预约
+            //更新可预约数:排班信息中的剩余预约数+1
+            int availableNumber = schedule.getAvailableNumber() + 1;
+            schedule.setAvailableNumber(availableNumber);
+
+        }
         scheduleService.update(schedule);
         //获得短信实体
         MsmVo msmVo = orderMqVo.getMsmVo();
@@ -55,6 +67,8 @@ public class HospitalReceiver {
             //发送消息给MQ
             rabbitService.sendMessage(MqConst.EXCHANGE_DIRECT_MSM, MqConst.ROUTING_MSM_ITEM, msmVo);
         }
+
+
     }
 
 }

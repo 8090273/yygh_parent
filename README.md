@@ -2303,3 +2303,22 @@ public class HospitalReceiver {
 
 }
 ```
+
+# 微信支付！！！！！
+
+因为无法申请公众号和商户号，所以接入了尚硅谷的微信支付密钥  
+
+支付后轮询查看支付状态接口（同步非阻塞）
+
+## 重要参数
+
+```properties
+# 微信支付
+#关联的公众号appid
+weixin.appid=wx74862e0dfcf69954
+#商户号
+weixin.partner=1558950191
+#商户key
+weixin.partnerkey=T6m9iK73b0kn9g5v426MKfHQH7X8rKwb
+```
+
